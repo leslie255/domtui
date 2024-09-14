@@ -1,35 +1,47 @@
+use std::convert::Infallible;
+
 use ratatui::{layout::Rect, Frame};
 
 use super::*;
 
-pub trait ComponentList {
+/// A tuple `(V0, V1, V2, ...)` where all its members are `View`s.
+/// For convenience sake it's also implemented for all `V: View` and `!`.
+/// For practicality sake it's only implemented for tuples up to (inclusive) 12 members.
+pub trait ViewTuple {
     const LEN: usize;
     fn render_each(&self, frame: &mut Frame, rect: impl FnMut(usize) -> Rect);
 }
 
-impl<const N: usize, T: Component> ComponentList for [T; N] {
-    const LEN: usize = N;
-
-    fn render_each(&self, frame: &mut Frame, mut rect: impl FnMut(usize) -> Rect) {
-        for (i, component) in self.iter().enumerate() {
-            component.render(frame, rect(i));
-        }
-    }
-}
-
-impl ComponentList for () {
+impl ViewTuple for ! {
     const LEN: usize = 0;
     fn render_each(&self, _frame: &mut Frame, _rect: impl FnMut(usize) -> Rect) {}
 }
 
-impl<T: Component> ComponentList for (T,) {
+impl ViewTuple for Infallible {
+    const LEN: usize = 0;
+    fn render_each(&self, _frame: &mut Frame, _rect: impl FnMut(usize) -> Rect) {}
+}
+
+impl<V: View> ViewTuple for V {
+    const LEN: usize = 1;
+    fn render_each(&self, frame: &mut Frame, mut rect: impl FnMut(usize) -> Rect) {
+        self.render(frame, rect(0));
+    }
+}
+
+impl ViewTuple for () {
+    const LEN: usize = 0;
+    fn render_each(&self, _frame: &mut Frame, _rect: impl FnMut(usize) -> Rect) {}
+}
+
+impl<V: View> ViewTuple for (V,) {
     const LEN: usize = 1;
     fn render_each(&self, frame: &mut Frame, mut rect: impl FnMut(usize) -> Rect) {
         self.0.render(frame, rect(0));
     }
 }
 
-impl<T0: Component, T1: Component> ComponentList for (T0, T1) {
+impl<V0: View, V1: View> ViewTuple for (V0, V1) {
     const LEN: usize = 2;
     fn render_each(&self, frame: &mut Frame, mut rect: impl FnMut(usize) -> Rect) {
         self.0.render(frame, rect(0));
@@ -37,7 +49,7 @@ impl<T0: Component, T1: Component> ComponentList for (T0, T1) {
     }
 }
 
-impl<T0: Component, T1: Component, T2: Component> ComponentList for (T0, T1, T2) {
+impl<V0: View, V1: View, V2: View> ViewTuple for (V0, V1, V2) {
     const LEN: usize = 3;
     fn render_each(&self, frame: &mut Frame, mut rect: impl FnMut(usize) -> Rect) {
         self.0.render(frame, rect(0));
@@ -46,9 +58,7 @@ impl<T0: Component, T1: Component, T2: Component> ComponentList for (T0, T1, T2)
     }
 }
 
-impl<T0: Component, T1: Component, T2: Component, T3: Component> ComponentList
-    for (T0, T1, T2, T3)
-{
+impl<V0: View, V1: View, V2: View, V3: View> ViewTuple for (V0, V1, V2, V3) {
     const LEN: usize = 4;
     fn render_each(&self, frame: &mut Frame, mut rect: impl FnMut(usize) -> Rect) {
         self.0.render(frame, rect(0));
@@ -58,9 +68,7 @@ impl<T0: Component, T1: Component, T2: Component, T3: Component> ComponentList
     }
 }
 
-impl<T0: Component, T1: Component, T2: Component, T3: Component, T4: Component> ComponentList
-    for (T0, T1, T2, T3, T4)
-{
+impl<V0: View, V1: View, V2: View, V3: View, V4: View> ViewTuple for (V0, V1, V2, V3, V4) {
     const LEN: usize = 5;
     fn render_each(&self, frame: &mut Frame, mut rect: impl FnMut(usize) -> Rect) {
         self.0.render(frame, rect(0));
@@ -71,8 +79,8 @@ impl<T0: Component, T1: Component, T2: Component, T3: Component, T4: Component> 
     }
 }
 
-impl<T0: Component, T1: Component, T2: Component, T3: Component, T4: Component, T5: Component>
-    ComponentList for (T0, T1, T2, T3, T4, T5)
+impl<V0: View, V1: View, V2: View, V3: View, V4: View, V5: View> ViewTuple
+    for (V0, V1, V2, V3, V4, V5)
 {
     const LEN: usize = 6;
     fn render_each(&self, frame: &mut Frame, mut rect: impl FnMut(usize) -> Rect) {
@@ -85,15 +93,8 @@ impl<T0: Component, T1: Component, T2: Component, T3: Component, T4: Component, 
     }
 }
 
-impl<
-        T0: Component,
-        T1: Component,
-        T2: Component,
-        T3: Component,
-        T4: Component,
-        T5: Component,
-        T6: Component,
-    > ComponentList for (T0, T1, T2, T3, T4, T5, T6)
+impl<V0: View, V1: View, V2: View, V3: View, V4: View, V5: View, V6: View> ViewTuple
+    for (V0, V1, V2, V3, V4, V5, V6)
 {
     const LEN: usize = 7;
     fn render_each(&self, frame: &mut Frame, mut rect: impl FnMut(usize) -> Rect) {
@@ -107,16 +108,8 @@ impl<
     }
 }
 
-impl<
-        T0: Component,
-        T1: Component,
-        T2: Component,
-        T3: Component,
-        T4: Component,
-        T5: Component,
-        T6: Component,
-        T7: Component,
-    > ComponentList for (T0, T1, T2, T3, T4, T5, T6, T7)
+impl<V0: View, V1: View, V2: View, V3: View, V4: View, V5: View, V6: View, V7: View> ViewTuple
+    for (V0, V1, V2, V3, V4, V5, V6, V7)
 {
     const LEN: usize = 8;
     fn render_each(&self, frame: &mut Frame, mut rect: impl FnMut(usize) -> Rect) {
@@ -131,17 +124,8 @@ impl<
     }
 }
 
-impl<
-        T0: Component,
-        T1: Component,
-        T2: Component,
-        T3: Component,
-        T4: Component,
-        T5: Component,
-        T6: Component,
-        T7: Component,
-        T8: Component,
-    > ComponentList for (T0, T1, T2, T3, T4, T5, T6, T7, T8)
+impl<V0: View, V1: View, V2: View, V3: View, V4: View, V5: View, V6: View, V7: View, V8: View>
+    ViewTuple for (V0, V1, V2, V3, V4, V5, V6, V7, V8)
 {
     const LEN: usize = 9;
     fn render_each(&self, frame: &mut Frame, mut rect: impl FnMut(usize) -> Rect) {
@@ -158,17 +142,17 @@ impl<
 }
 
 impl<
-        T0: Component,
-        T1: Component,
-        T2: Component,
-        T3: Component,
-        T4: Component,
-        T5: Component,
-        T6: Component,
-        T7: Component,
-        T8: Component,
-        T9: Component,
-    > ComponentList for (T0, T1, T2, T3, T4, T5, T6, T7, T8, T9)
+        V0: View,
+        V1: View,
+        V2: View,
+        V3: View,
+        V4: View,
+        V5: View,
+        V6: View,
+        V7: View,
+        V8: View,
+        V9: View,
+    > ViewTuple for (V0, V1, V2, V3, V4, V5, V6, V7, V8, V9)
 {
     const LEN: usize = 10;
     fn render_each(&self, frame: &mut Frame, mut rect: impl FnMut(usize) -> Rect) {
@@ -186,18 +170,18 @@ impl<
 }
 
 impl<
-        T0: Component,
-        T1: Component,
-        T2: Component,
-        T3: Component,
-        T4: Component,
-        T5: Component,
-        T6: Component,
-        T7: Component,
-        T8: Component,
-        T9: Component,
-        T10: Component,
-    > ComponentList for (T0, T1, T2, T3, T4, T5, T6, T7, T8, T9, T10)
+        V0: View,
+        V1: View,
+        V2: View,
+        V3: View,
+        V4: View,
+        V5: View,
+        V6: View,
+        V7: View,
+        V8: View,
+        V9: View,
+        V10: View,
+    > ViewTuple for (V0, V1, V2, V3, V4, V5, V6, V7, V8, V9, V10)
 {
     const LEN: usize = 11;
     fn render_each(&self, frame: &mut Frame, mut rect: impl FnMut(usize) -> Rect) {
@@ -216,19 +200,19 @@ impl<
 }
 
 impl<
-        T0: Component,
-        T1: Component,
-        T2: Component,
-        T3: Component,
-        T4: Component,
-        T5: Component,
-        T6: Component,
-        T7: Component,
-        T8: Component,
-        T9: Component,
-        T10: Component,
-        T11: Component,
-    > ComponentList for (T0, T1, T2, T3, T4, T5, T6, T7, T8, T9, T10, T11)
+        V0: View,
+        V1: View,
+        V2: View,
+        V3: View,
+        V4: View,
+        V5: View,
+        V6: View,
+        V7: View,
+        V8: View,
+        V9: View,
+        V10: View,
+        V11: View,
+    > ViewTuple for (V0, V1, V2, V3, V4, V5, V6, V7, V8, V9, V10, V11)
 {
     const LEN: usize = 12;
     fn render_each(&self, frame: &mut Frame, mut rect: impl FnMut(usize) -> Rect) {
