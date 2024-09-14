@@ -10,6 +10,11 @@ use ratatui::{
 
 use views::View;
 
+#[macro_export]
+macro_rules! view {
+    () => {};
+}
+
 pub fn setup_terminal() -> Terminal<CrosstermBackend<Stdout>> {
     use crossterm::event::EnableMouseCapture;
     crossterm::execute!(stdout(), EnableMouseCapture).unwrap();

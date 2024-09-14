@@ -12,6 +12,13 @@ pub trait View {
     fn render(&self, frame: &mut Frame, area: Rect);
 }
 
+#[derive(Debug, Clone, Copy)]
+pub struct Empty;
+
+impl View for Empty {
+    fn render(&self, _frame: &mut Frame, _area: Rect) {}
+}
+
 #[derive(Debug, Clone)]
 pub struct Paragraph<'a> {
     widget: widgets::Paragraph<'a>,

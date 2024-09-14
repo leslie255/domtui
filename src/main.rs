@@ -8,7 +8,7 @@ use ratatui::{
 
 pub mod domtui;
 
-use domtui::views::{Paragraph, Stack, View};
+use domtui::views::{Empty, Paragraph, Stack, View};
 
 /// A simple text block with square borders.
 fn text_block<'a>(text: impl Into<Text<'a>>) -> impl View + 'a {
@@ -24,7 +24,7 @@ fn main() {
         text_block("world\n世界"),
         Stack::equal_split_vertical((
             text_block("I'm Leslie,"),
-            text_block("@leslie255 on Github."),
+            Empty,
             text_block("This is the thing I made."),
             text_block("Which is a DOM-based TUI framework."),
             text_block("Wrapped on top of ratatui, a none-DOM-based, barebone TUI framework."),
