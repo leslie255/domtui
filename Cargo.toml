@@ -1,0 +1,8 @@
+[package]
+name = "domtui"
+version = "0.1.0"
+edition = "2021"
+
+[dependencies]
+ratatui = "0.28"
+index_vec = "0.1"
