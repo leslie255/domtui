@@ -1,36 +1,42 @@
-use std::borrow::Cow;
+#![feature(never_type)]
 
-use dom::{Node, Screen};
+use domtui::{Paragraph, Screen, Stack};
 use ratatui::{
     crossterm::event::{self, Event, KeyCode, KeyEvent, KeyEventKind, KeyModifiers},
-    widgets::{Block, Borders, Paragraph, Wrap},
+    layout::Direction,
+    text::Text, widgets::{Block, Borders, Wrap},
 };
 
-mod dom;
+pub mod domtui;
 
 /// A simple text block with square borders.
-fn text_block<'a>(text: impl Into<Cow<'a, str>>) -> Node<'a> {
-    let string: Cow<str> = text.into();
-    let paragraph = Paragraph::new(string)
-        .wrap(Wrap { trim: true }) // line wrap
+fn text_block<'a>(text: impl Into<Text<'a>>) -> impl domtui::Component + 'a {
+    let paragraph = Paragraph::new(text)
+        .wrap(Wrap { trim: true })
         .block(Block::new().borders(Borders::ALL));
-    paragraph.into()
+    paragraph
 }
 
 fn main() {
-    let screen = Screen {
-        root: Node::equal_horizontal_split([
+    let screen = Screen::new(Stack::equal_split(
+        Direction::Horizontal,
+        (
             text_block("hello\n你好"),
             text_block("world\n世界"),
-            Node::equal_vertical_split([
-                text_block("I'm Leslie."),
-                text_block("I'm Leslie."),
-                text_block("This is the thing I made."),
-                text_block("Which is a DOM-based TUI framework."),
-                text_block("Wrapped on top of ratatui, a none-DOM-based, barebone TUI framework."),
-            ]),
-        ]),
-    };
+            Stack::equal_split(
+                Direction::Vertical,
+                (
+                    text_block("I'm Leslie,"),
+                    text_block("@leslie255 on Github."),
+                    text_block("This is the thing I made."),
+                    text_block("Which is a DOM-based TUI framework."),
+                    text_block(
+                        "Wrapped on top of ratatui, a none-DOM-based, barebone TUI framework.",
+                    ),
+                ),
+            ),
+        ),
+    ));
     let mut terminal = ratatui::init();
     'event_loop: loop {
         screen.render(&mut terminal).unwrap();

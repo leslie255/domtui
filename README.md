@@ -1,4 +1,4 @@
 # DOMTUI
 
-Wrapper on `ratatui` to make TUI with DOM.
+Wrapper on `ratatui` to make TUI (text user interface) with DOM.
 
