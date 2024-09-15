@@ -1,6 +1,7 @@
 #![allow(dead_code)]
 
 use std::{
+    borrow::Cow,
     cell::RefCell,
     fmt::{self, Debug},
     io,
@@ -11,13 +12,16 @@ use ratatui::{
     backend::Backend,
     crossterm::event::{Event, KeyCode, KeyEvent, KeyEventKind, KeyModifiers},
     layout::{Constraint, Direction, Layout, Rect},
-    style::Style,
-    text::Text,
-    widgets::{self, Block, Wrap},
+    style::{Color, Style},
+    text::{Line, Span, Text},
+    widgets::{self, Block, Borders, Wrap},
     Frame, Terminal,
 };
 
-use super::view_tuple::ViewTuple;
+use super::{
+    input_field::{Cursor, InputFieldContent},
+    view_tuple::ViewTuple,
+};
 
 pub trait View {
     fn render(&self, frame: &mut Frame, area: Rect);
@@ -32,12 +36,12 @@ impl<'a, V: View> View for &'a V {
 #[derive(Debug, Clone)]
 pub struct Screen<'a, V: View + 'a> {
     root_view: V,
-    interactive_views: Vec<Weak<RefCell<InteractiveViewInner<'a>>>>,
+    interactive_views: Vec<Weak<RefCell<InteractiveViewWrapperInner<'a>>>>,
 }
 
 #[derive(Debug, Clone, Default)]
 pub struct ScreenBuilder<'a> {
-    interactive_views: Vec<Weak<RefCell<InteractiveViewInner<'a>>>>,
+    interactive_views: Vec<Weak<RefCell<InteractiveViewWrapperInner<'a>>>>,
 }
 
 impl<'a> ScreenBuilder<'a> {
@@ -58,9 +62,9 @@ impl<'a> ScreenBuilder<'a> {
     /// Wrap an `InteractiveView` into a `View`.
     pub fn add_interactive(
         &mut self,
-        interactive_view: impl InteractiveViewTrait + 'a,
-    ) -> InteractiveView<'a> {
-        let interactive_view = InteractiveView::new(false, interactive_view);
+        interactive_view: impl InteractiveView + 'a,
+    ) -> InteractiveViewWrapper<'a> {
+        let interactive_view = InteractiveViewWrapper::new(false, interactive_view);
         self.interactive_views.push(interactive_view.downgrade());
         interactive_view
     }
@@ -119,12 +123,12 @@ impl<'a, V: View + 'a> Screen<'a, V> {
         }
     }
 
-    pub fn focused_view<'b>(&'b self) -> Option<InteractiveView<'a>> {
+    pub fn focused_view<'b>(&'b self) -> Option<InteractiveViewWrapper<'a>> {
         let iv_weak = self
             .interactive_views
             .iter()
             .find(|iv_weak| iv_weak.upgrade().unwrap().borrow().is_focused)?;
-        Some(InteractiveView {
+        Some(InteractiveViewWrapper {
             inner: iv_weak.upgrade().unwrap(),
         })
     }
@@ -152,7 +156,7 @@ impl<'a, V: View + 'a> Screen<'a, V> {
 /// A `DynamicView` can be wrapped into a `View` by `DynamicSite`, which can only be dispatched by
 /// a Screen.
 #[allow(unused_variables)]
-pub trait InteractiveViewTrait {
+pub trait InteractiveView {
     fn render(&self, frame: &mut Frame, area: Rect, is_focused: bool);
     fn is_focusable(&self) -> bool {
         true
@@ -163,13 +167,13 @@ pub trait InteractiveViewTrait {
 }
 
 #[derive(Debug, Clone)]
-pub struct InteractiveView<'a> {
-    inner: Rc<RefCell<InteractiveViewInner<'a>>>,
+pub struct InteractiveViewWrapper<'a> {
+    inner: Rc<RefCell<InteractiveViewWrapperInner<'a>>>,
 }
 
-impl<'a> InteractiveView<'a> {
-    fn new(is_focused: bool, interactive_view: impl InteractiveViewTrait + 'a) -> Self {
-        let inner = InteractiveViewInner {
+impl<'a> InteractiveViewWrapper<'a> {
+    fn new(is_focused: bool, interactive_view: impl InteractiveView + 'a) -> Self {
+        let inner = InteractiveViewWrapperInner {
             is_focused,
             view: Box::new(interactive_view),
         };
@@ -179,25 +183,25 @@ impl<'a> InteractiveView<'a> {
     }
 
     /// Downgrade to a `Weak` reference.
-    fn downgrade(&self) -> Weak<RefCell<InteractiveViewInner<'a>>> {
+    fn downgrade(&self) -> Weak<RefCell<InteractiveViewWrapperInner<'a>>> {
         Rc::downgrade(&self.inner)
     }
 }
 
-impl View for InteractiveView<'_> {
+impl View for InteractiveViewWrapper<'_> {
     fn render(&self, frame: &mut Frame, area: Rect) {
         let inner = self.inner.borrow();
         inner.view.render(frame, area, inner.is_focused);
     }
 }
 
-struct InteractiveViewInner<'a> {
+struct InteractiveViewWrapperInner<'a> {
     is_focused: bool,
     /// FIXME: Remove this `Box` for one less indirection.
-    view: Box<dyn InteractiveViewTrait + 'a>,
+    view: Box<dyn InteractiveView + 'a>,
 }
 
-impl Debug for InteractiveViewInner<'_> {
+impl Debug for InteractiveViewWrapperInner<'_> {
     fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
         f.debug_struct("InteractiveViewWrapperInner")
             .field("is_focused", &self.is_focused)
@@ -279,5 +283,166 @@ impl<Children: ViewTuple> View for Stack<Children> {
     fn render(&self, frame: &mut Frame, area: Rect) {
         let chunks = self.layout.split(area);
         self.children.render_each(frame, |i| chunks[i])
+    }
+}
+
+#[derive(Debug, Clone, Default)]
+pub struct InputField<'a> {
+    placeholder: Cow<'a, str>,
+    content: InputFieldContent,
+}
+
+impl<'a> InputField<'a> {
+    pub fn placeholder(mut self, placeholder: impl Into<Cow<'a, str>>) -> Self {
+        self.placeholder = placeholder.into();
+        self
+    }
+
+    pub fn text(mut self, text: impl Into<String>) -> Self {
+        self.content.set_text(text.into());
+        self
+    }
+
+    pub fn cursor_at_end(mut self) -> Self {
+        self.content.cursor_to_end();
+        self
+    }
+
+    pub fn cursor_at_beginning(mut self) -> Self {
+        self.content.cursor_to_beginning();
+        self
+    }
+
+    pub fn content(&self) -> &InputFieldContent {
+        &self.content
+    }
+
+    pub fn content_mut(&mut self) -> &mut InputFieldContent {
+        &mut self.content
+    }
+
+    fn paragraph(&'a self, is_focused: bool) -> Paragraph<'a> {
+        let text = self.content.text();
+        if text.is_empty() {
+            return self.placeholder_paragraph(is_focused);
+        }
+        if !is_focused {
+            return Paragraph::new(text);
+        }
+        match self.content.cursor() {
+            Cursor::Caret(caret) => {
+                if self.content.caret_is_at_end() {
+                    return Paragraph::new(Line::from(vec![
+                        Span::raw(text),
+                        Span::styled(" ", self.caret_style()),
+                    ]));
+                }
+                Paragraph::new(Line::from(vec![
+                    Span::raw(&text[0..caret]),
+                    Span::styled(&text[caret..caret + 1], self.caret_style()),
+                    Span::raw(&text[caret + 1..]),
+                ]))
+            }
+            Cursor::Selection(range) => Paragraph::new(Line::from(vec![
+                Span::raw(&text[0..range.start]),
+                Span::styled(&text[range], self.selection_style()),
+                Span::raw(&text[range.end..]),
+            ])),
+        }
+    }
+
+    fn placeholder_paragraph(&'a self, is_focused: bool) -> Paragraph<'a> {
+        if is_focused {
+            let placeholder: &'a str = match &self.placeholder {
+                Cow::Borrowed(s) => s,
+                Cow::Owned(s) => s.as_str(),
+            };
+            let placeholder_caret_style = self.caret_style().patch(self.placeholder_style());
+            let head: &'a str = placeholder.get(..1).unwrap_or("");
+            let tail: &'a str = placeholder.get(1..).unwrap_or("");
+            Paragraph::new(Line::from(vec![
+                Span::styled(head, placeholder_caret_style),
+                Span::styled(tail, self.placeholder_style()),
+            ]))
+        } else {
+            Paragraph::new(Line::from(vec![Span::styled(
+                &self.placeholder[..],
+                self.placeholder_style(),
+            )]))
+        }
+    }
+
+    fn caret_style(&self) -> Style {
+        Style::new().bg(Color::White).fg(Color::Black)
+    }
+
+    fn selection_style(&self) -> Style {
+        Style::new().bg(Color::LightBlue).fg(Color::Black)
+    }
+
+    fn placeholder_style(&self) -> Style {
+        Style::new().fg(Color::DarkGray)
+    }
+}
+
+impl<'a> InteractiveView for InputField<'a> {
+    fn render(&self, frame: &mut Frame, area: Rect, is_focused: bool) {
+        let border_style = if is_focused {
+            Style::new().fg(Color::Yellow)
+        } else {
+            Style::new()
+        };
+        let block = Block::new()
+            .borders(Borders::ALL)
+            .border_style(border_style);
+        let paragraph = self.paragraph(is_focused).block(block);
+        paragraph.render(frame, area);
+    }
+
+    fn on_key_event(&mut self, key_event: KeyEvent) {
+        const CONTROL_SHIFT: KeyModifiers = match KeyModifiers::from_bits(
+            KeyModifiers::CONTROL.bits() | KeyModifiers::SHIFT.bits(),
+        ) {
+            Some(x) => x,
+            None => KeyModifiers::NONE,
+        };
+        match (key_event.modifiers, key_event.code) {
+            (KeyModifiers::NONE, KeyCode::Left) | (KeyModifiers::CONTROL, KeyCode::Char('b')) => {
+                self.content.caret_left()
+            }
+            (KeyModifiers::NONE, KeyCode::Right) | (KeyModifiers::CONTROL, KeyCode::Char('f')) => {
+                self.content.caret_right()
+            }
+            (KeyModifiers::CONTROL, KeyCode::Left | KeyCode::Char('a')) => {
+                self.content.caret_left_end();
+            }
+            (KeyModifiers::CONTROL, KeyCode::Right | KeyCode::Char('e')) => {
+                self.content.caret_right_end();
+            }
+            (KeyModifiers::SHIFT, KeyCode::Left) => {
+                self.content.select_left();
+            }
+            (KeyModifiers::SHIFT, KeyCode::Right) => {
+                self.content.select_right();
+            }
+            (CONTROL_SHIFT, KeyCode::Left) => {
+                self.content.select_left_end();
+            }
+            (CONTROL_SHIFT, KeyCode::Right) => {
+                self.content.select_right_end();
+            }
+            (KeyModifiers::NONE, KeyCode::Backspace) => self.content.delete_backward(),
+            (KeyModifiers::NONE, KeyCode::Delete) | (KeyModifiers::CONTROL, KeyCode::Char('d')) => {
+                self.content.delete_forward();
+            }
+            (KeyModifiers::NONE, KeyCode::Char(char)) => self.content.insert(char),
+            (KeyModifiers::SHIFT, KeyCode::Char(char)) => {
+                // FIXME: Respect more advanced keyboard layout (such as those with AltGr).
+                for char in char.to_uppercase() {
+                    self.content.insert(char);
+                }
+            }
+            _ => (),
+        }
     }
 }

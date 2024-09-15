@@ -1,6 +1,8 @@
 pub mod view_tuple;
 pub mod views;
 
+mod input_field;
+
 use std::io::{stdout, Stdout};
 
 use ratatui::{backend::CrosstermBackend, crossterm, Terminal};

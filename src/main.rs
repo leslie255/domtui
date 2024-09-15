@@ -1,4 +1,4 @@
-#![feature(never_type)]
+#![feature(never_type, new_range_api)]
 
 use std::borrow::Cow;
 
@@ -11,13 +11,13 @@ use ratatui::{
 
 pub mod domtui;
 
-use domtui::views::{Empty, InteractiveViewTrait, Paragraph, ScreenBuilder, Stack, View};
+use domtui::views::{Empty, InputField, InteractiveView, Paragraph, ScreenBuilder, Stack, View};
 
-struct FocusableTextBlock<'a> {
+struct TextBlock<'a> {
     string: Cow<'a, str>,
 }
 
-impl<'a> FocusableTextBlock<'a> {
+impl<'a> TextBlock<'a> {
     fn new(string: impl Into<Cow<'a, str>>) -> Self {
         Self {
             string: string.into(),
@@ -25,7 +25,7 @@ impl<'a> FocusableTextBlock<'a> {
     }
 }
 
-impl<'a> InteractiveViewTrait for FocusableTextBlock<'a> {
+impl<'a> InteractiveView for TextBlock<'a> {
     fn render(&self, frame: &mut ratatui::Frame, area: ratatui::prelude::Rect, is_focused: bool) {
         let border_style = if is_focused {
             Style::new().fg(Color::Yellow)
@@ -52,14 +52,11 @@ impl<'a> InteractiveViewTrait for FocusableTextBlock<'a> {
             return;
         }
         match (key_event.modifiers, key_event.code) {
-            (KeyModifiers::NONE, KeyCode::Char(char)) => {
-                self.string.to_mut().push(char);
-            }
-            (KeyModifiers::NONE, KeyCode::Enter) => {
-                self.string.to_mut().push('\n');
-            }
-            (KeyModifiers::NONE, KeyCode::Backspace) => {
-                self.string.to_mut().pop();
+            (KeyModifiers::NONE, KeyCode::Char(_))
+            | (KeyModifiers::SHIFT, KeyCode::Char(_))
+            | (KeyModifiers::NONE, KeyCode::Enter)
+            | (KeyModifiers::NONE, KeyCode::Backspace) => {
+                self.string = "No editing here! Go to an input field!".into();
             }
             _ => (),
         }
@@ -69,16 +66,23 @@ impl<'a> InteractiveViewTrait for FocusableTextBlock<'a> {
 fn main() {
     let mut builder = ScreenBuilder::new();
     let root_view = Stack::equal_split_horizontal((
-        builder.add_interactive(FocusableTextBlock::new("hello\n你好")),
-        builder.add_interactive(FocusableTextBlock::new("world\n世界")),
+        builder.add_interactive(TextBlock::new("hello\n你好")),
+        builder.add_interactive(TextBlock::new("world\n世界")),
         Stack::equal_split_vertical((
-            builder.add_interactive(FocusableTextBlock::new("I'm Leslie,")),
-            Empty,
-            builder.add_interactive(FocusableTextBlock::new("This is the thing I made.")),
-            builder.add_interactive(FocusableTextBlock::new(
-                "Which is a DOM-based TUI framework.",
+            Stack::equal_split_vertical((
+                builder.add_interactive(
+                    InputField::default()
+                        .placeholder("I'm leslie.")
+                        .text("I'm leslie.")
+                        .cursor_at_end(),
+                ),
+                builder
+                    .add_interactive(InputField::default().placeholder("This is an input field")),
             )),
-            builder.add_interactive(FocusableTextBlock::new(
+            Empty,
+            builder.add_interactive(TextBlock::new("This is the thing I made.")),
+            builder.add_interactive(TextBlock::new("Which is a DOM-based TUI framework.")),
+            builder.add_interactive(TextBlock::new(
                 "Wrapped on top of ratatui, a none-DOM-based, barebone TUI framework.",
             )),
         )),
