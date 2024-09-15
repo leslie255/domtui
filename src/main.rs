@@ -5,7 +5,6 @@ use std::borrow::Cow;
 use ratatui::{
     crossterm::event::{self, Event, KeyCode, KeyEvent, KeyEventKind, KeyModifiers},
     style::{Color, Style},
-    text::Line,
     widgets::{Block, Borders, Wrap},
 };
 
@@ -32,15 +31,9 @@ impl<'a> InteractiveView for TextBlock<'a> {
         } else {
             Style::new()
         };
-        let border_title = if is_focused {
-            Line::from("FOCUS HERE")
-        } else {
-            Line::from("")
-        };
         let s: &str = &self.string;
         let paragraph = Paragraph::new(s).wrap(Wrap { trim: false }).block(
             Block::new()
-                .title_bottom(border_title)
                 .borders(Borders::ALL)
                 .border_style(border_style),
         );
@@ -65,6 +58,7 @@ impl<'a> InteractiveView for TextBlock<'a> {
 
 fn main() {
     let mut builder = ScreenBuilder::new();
+
     let root_view = Stack::equal_split_horizontal((
         builder.add_interactive(TextBlock::new("hello\n你好")),
         builder.add_interactive(TextBlock::new("world\n世界")),
@@ -89,8 +83,8 @@ fn main() {
     ));
 
     let mut screen = builder.finish(root_view);
-    let mut terminal = domtui::setup_terminal();
 
+    let mut terminal = domtui::setup_terminal();
     'event_loop: loop {
         screen.render(&mut terminal).unwrap();
         if !event::poll(std::time::Duration::from_millis(100)).unwrap() {

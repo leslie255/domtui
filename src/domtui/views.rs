@@ -123,6 +123,39 @@ impl<'a, V: View + 'a> Screen<'a, V> {
         }
     }
 
+    pub fn focus_prev(&mut self) {
+        // Unfocus the currnet one.
+        // FIXME: make this more efficient by keeping track the of index of the focused view.
+        if self.interactive_views.is_empty() {
+            return;
+        }
+        let (idx, focused_view) = self
+            .interactive_views
+            .iter()
+            .rev()
+            .enumerate()
+            .find(|(_, weak_iv)| weak_iv.upgrade().unwrap().borrow().is_focused)
+            .map(|(i, weak_iv)| (i, weak_iv.clone()))
+            .unwrap_or_default();
+        if let Some(focused_view) = focused_view.upgrade() {
+            let mut focused_view = focused_view.borrow_mut();
+            focused_view.is_focused = false;
+            focused_view.view.on_unfocus();
+        }
+
+        // Focus the next focusable.
+        let next_focusable = self.interactive_views[..idx]
+            .iter()
+            .chain(self.interactive_views[(idx + 1)..].iter())
+            .find(|&weak_iv| weak_iv.upgrade().unwrap().borrow().view.is_focusable())
+            .map(|weak_iv| weak_iv.upgrade().unwrap());
+        if let Some(next_focusable) = next_focusable {
+            let mut next_focusable = next_focusable.borrow_mut();
+            next_focusable.is_focused = true;
+            next_focusable.view.on_unfocus();
+        }
+    }
+
     pub fn focused_view<'b>(&'b self) -> Option<InteractiveViewWrapper<'a>> {
         let iv_weak = self
             .interactive_views
@@ -135,6 +168,14 @@ impl<'a, V: View + 'a> Screen<'a, V> {
 
     pub fn handle_event(&mut self, event: Event) {
         match event {
+            Event::Key(KeyEvent {
+                code: KeyCode::BackTab,
+                modifiers: KeyModifiers::NONE,
+                kind: KeyEventKind::Press,
+                state: _,
+            }) => {
+                self.focus_prev();
+            }
             Event::Key(KeyEvent {
                 code: KeyCode::Tab,
                 modifiers: KeyModifiers::NONE,
