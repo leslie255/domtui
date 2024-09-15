@@ -144,7 +144,7 @@ impl<'a, V: View + 'a> Screen<'a, V> {
                     focused_view.inner.borrow_mut().view.on_key_event(key_event);
                 }
             }
-            _ => todo!(),
+            _ => (),
         }
     }
 }
