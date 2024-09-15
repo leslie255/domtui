@@ -29,16 +29,24 @@ pub trait View {
 
 impl<'a, V: View> View for &'a V {
     fn render(&self, frame: &mut Frame, area: Rect) {
-        (*self).render(frame, area)
+        <V as View>::render(*self, frame, area)
     }
 }
 
+impl<'a, V: View> View for &'a mut V {
+    fn render(&self, frame: &mut Frame, area: Rect) {
+        <V as View>::render(*self, frame, area)
+    }
+}
+
+/// `'a` for allowing to borrow from a data source.
 #[derive(Debug, Clone)]
 pub struct Screen<'a, V: View + 'a> {
     root_view: V,
     interactive_views: Vec<Weak<RefCell<InteractiveViewWrapperInner<'a>>>>,
 }
 
+/// `'a` for allowing to borrow from a data source.
 #[derive(Debug, Clone, Default)]
 pub struct ScreenBuilder<'a> {
     interactive_views: Vec<Weak<RefCell<InteractiveViewWrapperInner<'a>>>>,
@@ -91,6 +99,18 @@ impl<'a, V: View + 'a> Screen<'a, V> {
         Ok(())
     }
 
+    /// Wrap an `InteractiveView` into a `View`.
+    pub fn add_interactive(
+        &mut self,
+        interactive_view: impl InteractiveView + 'a,
+    ) -> InteractiveViewWrapper<'a> {
+        let interactive_view = InteractiveViewWrapper::new(false, interactive_view);
+        self.interactive_views.push(interactive_view.downgrade());
+        interactive_view
+    }
+
+    /// Switch focus to the next focusable view.
+    /// A focusable view is an `InteractiveView` with its `is_focusable` returning `true`.
     pub fn focus_next(&mut self) {
         // Unfocus the currnet one.
         // FIXME: make this more efficient by keeping track the of index of the focused view.
@@ -123,6 +143,8 @@ impl<'a, V: View + 'a> Screen<'a, V> {
         }
     }
 
+    /// Switch focus to the previous focusable view.
+    /// A focusable view is an `InteractiveView` with its `is_focusable` returning `true`.
     pub fn focus_prev(&mut self) {
         // Unfocus the currnet one.
         // FIXME: make this more efficient by keeping track the of index of the focused view.
@@ -156,6 +178,7 @@ impl<'a, V: View + 'a> Screen<'a, V> {
         }
     }
 
+    /// Returns the `InteractiveView` currently in focus.
     pub fn focused_view<'b>(&'b self) -> Option<InteractiveViewWrapper<'a>> {
         let iv_weak = self
             .interactive_views
@@ -199,14 +222,43 @@ impl<'a, V: View + 'a> Screen<'a, V> {
 #[allow(unused_variables)]
 pub trait InteractiveView {
     fn render(&self, frame: &mut Frame, area: Rect, is_focused: bool);
+
     fn is_focusable(&self) -> bool {
         true
     }
+
     fn on_focus(&mut self) {}
+
     fn on_unfocus(&mut self) {}
+
     fn on_key_event(&mut self, key_event: KeyEvent) {}
 }
 
+impl<'a, IV: InteractiveView> InteractiveView for &'a mut IV {
+    fn render(&self, frame: &mut Frame, area: Rect, is_focused: bool) {
+        <IV as InteractiveView>::render(*self, frame, area, is_focused)
+    }
+
+    fn is_focusable(&self) -> bool {
+        <IV as InteractiveView>::is_focusable(*self)
+    }
+
+    fn on_focus(&mut self) {
+        <IV as InteractiveView>::on_focus(*self)
+    }
+
+    fn on_unfocus(&mut self) {
+        <IV as InteractiveView>::on_unfocus(*self)
+    }
+
+    fn on_key_event(&mut self, key_event: KeyEvent) {
+        <IV as InteractiveView>::on_key_event(*self, key_event)
+    }
+}
+
+/// This is a wrapper that turns a `IV: InteractiveView` into a `View`.
+/// It can only be created by a `ScreenBuilder` or a `Screen`.
+/// `'a` for allowing to borrow from a data source.
 #[derive(Debug, Clone)]
 pub struct InteractiveViewWrapper<'a> {
     inner: Rc<RefCell<InteractiveViewWrapperInner<'a>>>,
@@ -226,6 +278,18 @@ impl<'a> InteractiveViewWrapper<'a> {
     /// Downgrade to a `Weak` reference.
     fn downgrade(&self) -> Weak<RefCell<InteractiveViewWrapperInner<'a>>> {
         Rc::downgrade(&self.inner)
+    }
+
+    /// Do something to the wrapped `InteractiveView`.
+    pub fn inspect<T>(&self, f: impl FnOnce(&dyn InteractiveView) -> T) -> T {
+        let inner = self.inner.borrow();
+        f(inner.view.as_ref())
+    }
+
+    /// Do something to the wrapped `InteractiveView`.
+    pub fn inspect_mut<T>(&self, f: impl FnOnce(&mut dyn InteractiveView) -> T) -> T {
+        let mut inner = self.inner.borrow_mut();
+        f(inner.view.as_mut())
     }
 }
 
@@ -433,10 +497,17 @@ impl<'a> InteractiveView for InputField<'a> {
         } else {
             Style::new()
         };
+        if is_focused {
+            let cursor_x = self.content.primary_caret() as u16;
+            frame.set_cursor_position((area.x + 1 + cursor_x, area.y + 1));
+        }
         let block = Block::new()
             .borders(Borders::ALL)
             .border_style(border_style);
-        let paragraph = self.paragraph(is_focused).block(block);
+        let paragraph = self
+            .paragraph(is_focused)
+            .block(block)
+            .wrap(Wrap { trim: false });
         paragraph.render(frame, area);
     }
 

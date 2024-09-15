@@ -1,5 +1,6 @@
-/// Manages State of input fields.
-/// Cursor, selection, etc.
+//! Manages State of input fields.
+//! Cursor, selection, etc.
+
 use core::range::Range;
 use std::{error::Error, mem};
 
@@ -99,6 +100,10 @@ impl InputFieldContent {
             (caret, None) => Cursor::Caret(caret),
             (caret, Some(caret2)) => Cursor::Selection(range(caret, caret2)),
         }
+    }
+
+    pub fn primary_caret(&self) -> usize {
+        self.caret
     }
 
     pub fn cursor_to_beginning(&mut self) {
