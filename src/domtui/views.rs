@@ -16,7 +16,7 @@ use ratatui::{
     layout::{Alignment, Constraint, Direction, Layout, Rect},
     style::{Color, Style},
     text::{Line, Span, Text},
-    widgets::{self, Block, Borders, Wrap},
+    widgets::{self, Block, Wrap},
     Frame, Terminal,
 };
 
@@ -425,10 +425,31 @@ impl<Children: ViewTuple> View for Stack<Children> {
     }
 }
 
-#[derive(Debug, Clone, Default, Hash)]
+#[derive(Debug, Clone, Hash)]
 pub struct InputField<'a> {
     placeholder: Cow<'a, str>,
     content: InputFieldContent,
+    style_focused: Style,
+    style_unfocused: Style,
+    style_placeholder: Style,
+    style_selection: Style,
+    block_focused: Block<'a>,
+    block_unfocused: Block<'a>,
+}
+
+impl<'a> Default for InputField<'a> {
+    fn default() -> Self {
+        Self {
+            placeholder: Cow::default(),
+            content: InputFieldContent::default(),
+            style_focused: Style::default(),
+            style_unfocused: Style::default(),
+            style_placeholder: Style::new().fg(Color::DarkGray),
+            style_selection: Style::new().bg(Color::LightBlue).fg(Color::Black),
+            block_focused: Block::default(),
+            block_unfocused: Block::default(),
+        }
+    }
 }
 
 impl<'a> InputField<'a> {
@@ -449,6 +470,36 @@ impl<'a> InputField<'a> {
 
     pub fn cursor_at_beginning(mut self) -> Self {
         self.content.cursor_to_beginning();
+        self
+    }
+
+    pub fn style_focused(mut self, style_focused: Style) -> Self {
+        self.style_focused = style_focused;
+        self
+    }
+
+    pub fn style_unfocused(mut self, style_unfocused: Style) -> Self {
+        self.style_unfocused = style_unfocused;
+        self
+    }
+
+    pub fn block_focused(mut self, block_focused: Block<'a>) -> Self {
+        self.block_focused = block_focused;
+        self
+    }
+
+    pub fn block_unfocused(mut self, block_unfocused: Block<'a>) -> Self {
+        self.block_unfocused = block_unfocused;
+        self
+    }
+
+    pub fn style_placeholder(mut self, style_placeholder: Style) -> Self {
+        self.style_placeholder = style_placeholder;
+        self
+    }
+
+    pub fn style_selection(mut self, style_selection: Style) -> Self {
+        self.style_selection = style_selection;
         self
     }
 
@@ -484,7 +535,7 @@ impl<'a> InputField<'a> {
             }
             Cursor::Selection(range) => Paragraph::new(Line::from(vec![
                 Span::raw(&text[0..range.start]),
-                Span::styled(&text[range], self.selection_style()),
+                Span::styled(&text[range], self.style_selection),
                 Span::raw(&text[range.end..]),
             ])),
         }
@@ -496,17 +547,17 @@ impl<'a> InputField<'a> {
                 Cow::Borrowed(s) => s,
                 Cow::Owned(s) => s.as_str(),
             };
-            let placeholder_caret_style = self.caret_style().patch(self.placeholder_style());
+            let placeholder_caret_style = self.caret_style().patch(self.style_placeholder);
             let head: &'a str = placeholder.get(..1).unwrap_or("");
             let tail: &'a str = placeholder.get(1..).unwrap_or("");
             Paragraph::new(Line::from(vec![
                 Span::styled(head, placeholder_caret_style),
-                Span::styled(tail, self.placeholder_style()),
+                Span::styled(tail, self.style_placeholder),
             ]))
         } else {
             Paragraph::new(Line::from(vec![Span::styled(
                 &self.placeholder[..],
-                self.placeholder_style(),
+                self.style_placeholder,
             )]))
         }
     }
@@ -514,30 +565,19 @@ impl<'a> InputField<'a> {
     fn caret_style(&self) -> Style {
         Style::new().bg(Color::White).fg(Color::Black)
     }
-
-    fn selection_style(&self) -> Style {
-        Style::new().bg(Color::LightBlue).fg(Color::Black)
-    }
-
-    fn placeholder_style(&self) -> Style {
-        Style::new().fg(Color::DarkGray)
-    }
 }
 
 impl<'a> InteractiveView for InputField<'a> {
     fn render(&self, frame: &mut Frame, area: Rect, is_focused: bool) {
-        let border_style = if is_focused {
-            Style::new().fg(Color::Yellow)
-        } else {
-            Style::new()
-        };
         if is_focused {
             let cursor_x = self.content.primary_caret() as u16;
             frame.set_cursor_position((area.x + 1 + cursor_x, area.y + 1));
         }
-        let block = Block::new()
-            .borders(Borders::ALL)
-            .border_style(border_style);
+        let block = if is_focused {
+            self.block_focused.clone()
+        } else {
+            self.block_unfocused.clone()
+        };
         let paragraph = self
             .paragraph(is_focused)
             .block(block)

@@ -9,7 +9,7 @@ fn main() {
     let mut builder = ScreenBuilder::new();
 
     let root_view = Stack::horizontal((
-        Paragraph::new("hello\n你好").style(Style::new().bg(Color::LightBlue).fg(Color::Black)),
+        Paragraph::new("hello\n你好").style(Style::new().bg(Color::LightYellow).fg(Color::Black)),
         Paragraph::new("world\n世界").style(Style::new().bg(Color::LightCyan).fg(Color::Black)),
         Stack::vertical((
             Stack::vertical((
