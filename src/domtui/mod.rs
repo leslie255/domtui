@@ -1,12 +1,15 @@
+pub mod input_field;
 pub mod view_tuple;
 pub mod views;
-pub mod input_field;
 
 use std::io::{stdout, Stdout};
 
-use ratatui::{backend::CrosstermBackend, crossterm, Terminal};
+use ratatui::{
+    backend::{Backend, CrosstermBackend},
+    crossterm, Terminal,
+};
 
-use views::View;
+use views::{Screen, View};
 
 pub fn setup_terminal() -> Terminal<CrosstermBackend<Stdout>> {
     use crossterm::event::EnableMouseCapture;
@@ -19,4 +22,11 @@ pub fn restore_terminal(mut terminal: Terminal<CrosstermBackend<Stdout>>) {
     terminal.show_cursor().unwrap();
     crossterm::execute!(stdout(), DisableMouseCapture).unwrap();
     ratatui::restore()
+}
+
+/// Shorthand for rendering a view with no dynamic parts.
+/// For rendering views with dynamic parts, use `Screen`.
+pub fn render<V: View, B: Backend>(terminal: &mut Terminal<B>, view: V) -> std::io::Result<()> {
+    let screen = Screen::new(view);
+    screen.render(terminal)
 }

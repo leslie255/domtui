@@ -81,7 +81,7 @@ pub enum Cursor {
     Selection(Range<usize>),
 }
 
-#[derive(Debug, Clone, Default)]
+#[derive(Debug, Clone, Default, Hash)]
 pub struct InputFieldContent {
     text: String,
     /// If `caret2` is `Some`, the input field is in selection mode.

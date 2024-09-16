@@ -8,6 +8,8 @@ use std::{
     rc::{Rc, Weak},
 };
 
+use derive_more::From;
+
 use ratatui::{
     backend::Backend,
     crossterm::event::{Event, KeyCode, KeyEvent, KeyEventKind, KeyModifiers},
@@ -23,33 +25,17 @@ use super::{
     view_tuple::ViewTuple,
 };
 
-pub trait View {
-    fn render(&self, frame: &mut Frame, area: Rect);
-}
-
-impl<'a, V: View> View for &'a V {
-    fn render(&self, frame: &mut Frame, area: Rect) {
-        <V as View>::render(*self, frame, area)
-    }
-}
-
-impl<'a, V: View> View for &'a mut V {
-    fn render(&self, frame: &mut Frame, area: Rect) {
-        <V as View>::render(*self, frame, area)
-    }
-}
-
 /// `'a` for allowing to borrow from a data source.
 #[derive(Debug, Clone)]
 pub struct Screen<'a, V: View + 'a> {
     root_view: V,
-    interactive_views: Vec<Weak<RefCell<InteractiveViewWrapperInner<'a>>>>,
+    interactive_views: Vec<InteractiveViewWeakRef<'a>>,
 }
 
 /// `'a` for allowing to borrow from a data source.
 #[derive(Debug, Clone, Default)]
 pub struct ScreenBuilder<'a> {
-    interactive_views: Vec<Weak<RefCell<InteractiveViewWrapperInner<'a>>>>,
+    interactive_views: Vec<InteractiveViewWeakRef<'a>>,
 }
 
 impl<'a> ScreenBuilder<'a> {
@@ -59,7 +45,7 @@ impl<'a> ScreenBuilder<'a> {
 
     pub fn finish<V: View>(self, root_view: V) -> Screen<'a, V> {
         if let Some(first_iv) = self.interactive_views.first() {
-            first_iv.upgrade().unwrap().borrow_mut().is_focused = true;
+            first_iv.upgrade().unwrap().inner.borrow_mut().is_focused = true;
         }
         Screen {
             root_view,
@@ -121,11 +107,11 @@ impl<'a, V: View + 'a> Screen<'a, V> {
             .interactive_views
             .iter()
             .enumerate()
-            .find(|(_, weak_iv)| weak_iv.upgrade().unwrap().borrow().is_focused)
+            .find(|(_, weak_iv)| weak_iv.upgrade().unwrap().inner.borrow().is_focused)
             .map(|(i, weak_iv)| (i, weak_iv.clone()))
             .unwrap_or_default();
         if let Some(focused_view) = focused_view.upgrade() {
-            let mut focused_view = focused_view.borrow_mut();
+            let mut focused_view = focused_view.inner.borrow_mut();
             focused_view.is_focused = false;
             focused_view.view.on_unfocus();
         }
@@ -134,10 +120,18 @@ impl<'a, V: View + 'a> Screen<'a, V> {
         let next_focusable = self.interactive_views[(idx + 1)..]
             .iter()
             .chain(self.interactive_views[..idx].iter())
-            .find(|&weak_iv| weak_iv.upgrade().unwrap().borrow().view.is_focusable())
+            .find(|&weak_iv| {
+                weak_iv
+                    .upgrade()
+                    .unwrap()
+                    .inner
+                    .borrow()
+                    .view
+                    .is_focusable()
+            })
             .map(|weak_iv| weak_iv.upgrade().unwrap());
         if let Some(next_focusable) = next_focusable {
-            let mut next_focusable = next_focusable.borrow_mut();
+            let mut next_focusable = next_focusable.inner.borrow_mut();
             next_focusable.is_focused = true;
             next_focusable.view.on_unfocus();
         }
@@ -156,11 +150,11 @@ impl<'a, V: View + 'a> Screen<'a, V> {
             .iter()
             .rev()
             .enumerate()
-            .find(|(_, weak_iv)| weak_iv.upgrade().unwrap().borrow().is_focused)
+            .find(|(_, weak_iv)| weak_iv.upgrade().unwrap().inner.borrow().is_focused)
             .map(|(i, weak_iv)| (i, weak_iv.clone()))
             .unwrap_or_default();
         if let Some(focused_view) = focused_view.upgrade() {
-            let mut focused_view = focused_view.borrow_mut();
+            let mut focused_view = focused_view.inner.borrow_mut();
             focused_view.is_focused = false;
             focused_view.view.on_unfocus();
         }
@@ -169,24 +163,32 @@ impl<'a, V: View + 'a> Screen<'a, V> {
         let next_focusable = self.interactive_views[..idx]
             .iter()
             .chain(self.interactive_views[(idx + 1)..].iter())
-            .find(|&weak_iv| weak_iv.upgrade().unwrap().borrow().view.is_focusable())
+            .find(|&weak_iv| {
+                weak_iv
+                    .upgrade()
+                    .unwrap()
+                    .inner
+                    .borrow()
+                    .view
+                    .is_focusable()
+            })
             .map(|weak_iv| weak_iv.upgrade().unwrap());
         if let Some(next_focusable) = next_focusable {
-            let mut next_focusable = next_focusable.borrow_mut();
+            let mut next_focusable = next_focusable.inner.borrow_mut();
             next_focusable.is_focused = true;
             next_focusable.view.on_unfocus();
         }
     }
 
     /// Returns the `InteractiveView` currently in focus.
+    /// Returns `None` if no view (including the situation where a view was focused but was since
+    /// deleted).
     pub fn focused_view<'b>(&'b self) -> Option<InteractiveViewWrapper<'a>> {
         let iv_weak = self
             .interactive_views
             .iter()
-            .find(|iv_weak| iv_weak.upgrade().unwrap().borrow().is_focused)?;
-        Some(InteractiveViewWrapper {
-            inner: iv_weak.upgrade().unwrap(),
-        })
+            .find(|iv_weak| iv_weak.upgrade().unwrap().inner.borrow().is_focused)?;
+        iv_weak.upgrade()
     }
 
     pub fn handle_event(&mut self, event: Event) {
@@ -214,6 +216,22 @@ impl<'a, V: View + 'a> Screen<'a, V> {
             }
             _ => (),
         }
+    }
+}
+
+pub trait View {
+    fn render(&self, frame: &mut Frame, area: Rect);
+}
+
+impl<'a, V: View> View for &'a V {
+    fn render(&self, frame: &mut Frame, area: Rect) {
+        <V as View>::render(*self, frame, area)
+    }
+}
+
+impl<'a, V: View> View for &'a mut V {
+    fn render(&self, frame: &mut Frame, area: Rect) {
+        <V as View>::render(*self, frame, area)
     }
 }
 
@@ -259,7 +277,7 @@ impl<'a, IV: InteractiveView> InteractiveView for &'a mut IV {
 /// This is a wrapper that turns a `IV: InteractiveView` into a `View`.
 /// It can only be created by a `ScreenBuilder` or a `Screen`.
 /// `'a` for allowing to borrow from a data source.
-#[derive(Debug, Clone)]
+#[derive(Debug, Clone, From)]
 pub struct InteractiveViewWrapper<'a> {
     inner: Rc<RefCell<InteractiveViewWrapperInner<'a>>>,
 }
@@ -276,8 +294,8 @@ impl<'a> InteractiveViewWrapper<'a> {
     }
 
     /// Downgrade to a `Weak` reference.
-    fn downgrade(&self) -> Weak<RefCell<InteractiveViewWrapperInner<'a>>> {
-        Rc::downgrade(&self.inner)
+    fn downgrade(&self) -> InteractiveViewWeakRef<'a> {
+        Rc::downgrade(&self.inner).into()
     }
 
     /// Do something to the wrapped `InteractiveView`.
@@ -314,14 +332,28 @@ impl Debug for InteractiveViewWrapperInner<'_> {
     }
 }
 
-#[derive(Debug, Clone, Copy)]
+/// FIXME: Maybe expose this in the future as API.
+#[derive(Debug, Clone, Default, From)]
+struct InteractiveViewWeakRef<'a> {
+    weak: Weak<RefCell<InteractiveViewWrapperInner<'a>>>,
+}
+
+impl<'a> InteractiveViewWeakRef<'a> {
+    /// Like `Weak::upgrade`, it may fail when either the original `Rc` is dropped or the `Weak` is
+    /// null.
+    fn upgrade(&self) -> Option<InteractiveViewWrapper<'a>> {
+        self.weak.upgrade().map(Into::into)
+    }
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord, Hash)]
 pub struct Empty;
 
 impl View for Empty {
     fn render(&self, _frame: &mut Frame, _area: Rect) {}
 }
 
-#[derive(Debug, Clone)]
+#[derive(Debug, Clone, PartialEq, Eq, Hash)]
 pub struct Paragraph<'a> {
     widget: widgets::Paragraph<'a>,
 }
@@ -358,7 +390,7 @@ impl<'a> View for Paragraph<'a> {
     }
 }
 
-#[derive(Debug, Clone)]
+#[derive(Debug, Clone, PartialEq, Eq, Hash)]
 pub struct Stack<Ts: ViewTuple> {
     children: Ts,
     layout: Layout,
@@ -391,7 +423,7 @@ impl<Children: ViewTuple> View for Stack<Children> {
     }
 }
 
-#[derive(Debug, Clone, Default)]
+#[derive(Debug, Clone, Default, Hash)]
 pub struct InputField<'a> {
     placeholder: Cow<'a, str>,
     content: InputFieldContent,
