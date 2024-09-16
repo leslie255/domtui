@@ -29,13 +29,13 @@ use super::{
 #[derive(Debug, Clone)]
 pub struct Screen<'a, V: StaticView + 'a> {
     root_view: V,
-    dynamic_sites: Vec<DynamicSiteWeakRef<'a>>,
+    dynamic_sites: Vec<DynamicViewWrapperWeakRef<'a>>,
 }
 
 /// `'a` for allowing to borrow from a data source.
 #[derive(Debug, Clone, Default)]
 pub struct ScreenBuilder<'a> {
-    dynamic_sites: Vec<DynamicSiteWeakRef<'a>>,
+    dynamic_sites: Vec<DynamicViewWrapperWeakRef<'a>>,
 }
 
 impl<'a> ScreenBuilder<'a> {
@@ -53,9 +53,9 @@ impl<'a> ScreenBuilder<'a> {
         }
     }
 
-    /// Wrap a `View` into a `DynamicSite`.
-    pub fn dynamic_site(&mut self, view: impl View + 'a) -> DynamicSite<'a> {
-        let view = DynamicSite::new(false, view);
+    /// Wrap a `View` into a `DynamicViewWrapper`.
+    pub fn dynamic_site(&mut self, view: impl View + 'a) -> DynamicViewWrapper<'a> {
+        let view = DynamicViewWrapper::new(false, view);
         self.dynamic_sites.push(view.downgrade());
         view
     }
@@ -84,8 +84,8 @@ impl<'a, V: StaticView + 'a> Screen<'a, V> {
 
     /// This has the same effect as calling `ScreenBuilder::dynamic_site` before the screen was
     /// built.
-    pub fn create_dynamic_site(&mut self, view: impl View + 'a) -> DynamicSite<'a> {
-        let dynamic_site = DynamicSite::new(false, view);
+    pub fn create_dynamic_site(&mut self, view: impl View + 'a) -> DynamicViewWrapper<'a> {
+        let dynamic_site = DynamicViewWrapper::new(false, view);
         self.dynamic_sites.push(dynamic_site.downgrade());
         dynamic_site
     }
@@ -133,7 +133,7 @@ impl<'a, V: StaticView + 'a> Screen<'a, V> {
     }
 
     /// Switch focus to the previous focusable view.
-    /// A focusable view is an `DynamicSite` with its `is_focusable` returning `true`.
+    /// A focusable view is an `DynamicView` with its `is_focusable` returning `true`.
     pub fn focus_prev(&mut self) {
         // Unfocus the currnet one.
         // FIXME: make this more efficient by keeping track the of index of the focused view.
@@ -175,10 +175,10 @@ impl<'a, V: StaticView + 'a> Screen<'a, V> {
         }
     }
 
-    /// Returns the `DynamicSite` currently in focus.
+    /// Returns the view currently in focus in the form of a `DynamicViewWrapper`.
     /// Returns `None` if no view (including the situation where a view was focused but was since
     /// deleted).
-    pub fn focused<'b>(&'b self) -> Option<DynamicSite<'a>> {
+    pub fn focused<'b>(&'b self) -> Option<DynamicViewWrapper<'a>> {
         let iv_weak = self
             .dynamic_sites
             .iter()
@@ -244,14 +244,16 @@ pub trait View {
     fn on_key_event(&mut self, key_event: KeyEvent) {}
 }
 
+/// Wrap a dynamic view into a static view through internal mutability.
+/// Also erases its type.
 #[derive(Debug, Clone, From)]
-pub struct DynamicSite<'a> {
-    inner: Rc<RefCell<DynamicSiteInner<'a>>>,
+pub struct DynamicViewWrapper<'a> {
+    inner: Rc<RefCell<DynamicViewWrapperInner<'a>>>,
 }
 
-impl<'a> DynamicSite<'a> {
+impl<'a> DynamicViewWrapper<'a> {
     fn new(is_focused: bool, view: impl View + 'a) -> Self {
-        let inner = DynamicSiteInner {
+        let inner = DynamicViewWrapperInner {
             is_focused,
             view: Box::new(view),
         };
@@ -261,7 +263,7 @@ impl<'a> DynamicSite<'a> {
     }
 
     /// Downgrade to a `Weak` reference.
-    fn downgrade(&self) -> DynamicSiteWeakRef<'a> {
+    fn downgrade(&self) -> DynamicViewWrapperWeakRef<'a> {
         Rc::downgrade(&self.inner).into()
     }
 
@@ -278,22 +280,22 @@ impl<'a> DynamicSite<'a> {
     }
 }
 
-impl StaticView for DynamicSite<'_> {
+impl StaticView for DynamicViewWrapper<'_> {
     fn render_static(&self, frame: &mut Frame, area: Rect) {
         let inner = self.inner.borrow();
         inner.view.render(frame, area, inner.is_focused);
     }
 }
 
-struct DynamicSiteInner<'a> {
+struct DynamicViewWrapperInner<'a> {
     is_focused: bool,
     /// FIXME: Remove this `Box` for one less indirection.
     view: Box<dyn View + 'a>,
 }
 
-impl Debug for DynamicSiteInner<'_> {
+impl Debug for DynamicViewWrapperInner<'_> {
     fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
-        f.debug_struct("DynamicSiteInner")
+        f.debug_struct("DynamicViewWrapperInner")
             .field("is_focused", &self.is_focused)
             .finish_non_exhaustive()
     }
@@ -301,14 +303,14 @@ impl Debug for DynamicSiteInner<'_> {
 
 /// FIXME: Maybe expose this in the future as API.
 #[derive(Debug, Clone, Default, From)]
-struct DynamicSiteWeakRef<'a> {
-    weak: Weak<RefCell<DynamicSiteInner<'a>>>,
+struct DynamicViewWrapperWeakRef<'a> {
+    weak: Weak<RefCell<DynamicViewWrapperInner<'a>>>,
 }
 
-impl<'a> DynamicSiteWeakRef<'a> {
+impl<'a> DynamicViewWrapperWeakRef<'a> {
     /// Like `Weak::upgrade`, it may fail when either the original `Rc` is dropped or the `Weak` is
     /// null.
-    fn upgrade(&self) -> Option<DynamicSite<'a>> {
+    fn upgrade(&self) -> Option<DynamicViewWrapper<'a>> {
         self.weak.upgrade().map(Into::into)
     }
 }
