@@ -13,7 +13,7 @@ use derive_more::From;
 use ratatui::{
     backend::Backend,
     crossterm::event::{Event, KeyCode, KeyEvent, KeyEventKind, KeyModifiers},
-    layout::{Constraint, Direction, Layout, Rect},
+    layout::{Alignment, Constraint, Direction, Layout, Rect},
     style::{Color, Style},
     text::{Line, Span, Text},
     widgets::{self, Block, Borders, Wrap},
@@ -54,7 +54,7 @@ impl<'a> ScreenBuilder<'a> {
     }
 
     /// Wrap an `InteractiveView` into a `View`.
-    pub fn add_interactive(
+    pub fn interactive(
         &mut self,
         interactive_view: impl InteractiveView + 'a,
     ) -> InteractiveViewWrapper<'a> {
@@ -365,22 +365,24 @@ impl<'a> Paragraph<'a> {
         }
     }
 
-    pub fn style(self, style: Style) -> Self {
-        Self {
-            widget: self.widget.style(style),
-        }
+    pub fn style(mut self, style: Style) -> Self {
+        self.widget = self.widget.style(style);
+        self
     }
 
-    pub fn wrap(self, wrap: Wrap) -> Self {
-        Self {
-            widget: self.widget.wrap(wrap),
-        }
+    pub fn wrap(mut self, wrap: Wrap) -> Self {
+        self.widget = self.widget.wrap(wrap);
+        self
     }
 
-    pub fn block(self, block: Block<'a>) -> Self {
-        Self {
-            widget: self.widget.block(block),
-        }
+    pub fn block(mut self, block: Block<'a>) -> Self {
+        self.widget = self.widget.block(block);
+        self
+    }
+
+    pub fn alignment(mut self, alignment: Alignment) -> Self {
+        self.widget = self.widget.alignment(alignment);
+        self
     }
 }
 
@@ -407,11 +409,11 @@ impl<Children: ViewTuple> Stack<Children> {
         Self::new(children, layout)
     }
 
-    pub fn equal_split_horizontal(children: Children) -> Self {
+    pub fn horizontal(children: Children) -> Self {
         Self::equal_split(Direction::Horizontal, children)
     }
 
-    pub fn equal_split_vertical(children: Children) -> Self {
+    pub fn vertical(children: Children) -> Self {
         Self::equal_split(Direction::Vertical, children)
     }
 }

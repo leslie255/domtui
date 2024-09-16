@@ -1,110 +1,33 @@
 #![feature(never_type, new_range_api)]
 
-use std::borrow::Cow;
-
-use ratatui::{
-    crossterm::event::{self, Event, KeyCode, KeyEvent, KeyEventKind, KeyModifiers},
-    style::{Color, Style},
-    widgets::{Block, Borders, Wrap},
-};
-
 pub mod domtui;
 
-use domtui::views::{Empty, InputField, InteractiveView, Paragraph, ScreenBuilder, Stack, View};
-
-struct TextBlock<'a> {
-    string: Cow<'a, str>,
-}
-
-impl<'a> TextBlock<'a> {
-    fn new(string: impl Into<Cow<'a, str>>) -> Self {
-        Self {
-            string: string.into(),
-        }
-    }
-}
-
-impl<'a> InteractiveView for TextBlock<'a> {
-    fn render(&self, frame: &mut ratatui::Frame, area: ratatui::prelude::Rect, is_focused: bool) {
-        let border_style = if is_focused {
-            Style::new().fg(Color::Yellow)
-        } else {
-            Style::new()
-        };
-        let s: &str = &self.string;
-        let paragraph = Paragraph::new(s).wrap(Wrap { trim: false }).block(
-            Block::new()
-                .borders(Borders::ALL)
-                .border_style(border_style),
-        );
-        paragraph.render(frame, area);
-    }
-
-    fn on_key_event(&mut self, key_event: KeyEvent) {
-        if key_event.kind != KeyEventKind::Press {
-            return;
-        }
-        match (key_event.modifiers, key_event.code) {
-            (KeyModifiers::NONE, KeyCode::Char(_))
-            | (KeyModifiers::SHIFT, KeyCode::Char(_))
-            | (KeyModifiers::NONE, KeyCode::Enter)
-            | (KeyModifiers::NONE, KeyCode::Backspace) => {
-                self.string = "No editing here! Go to an input field!".into();
-            }
-            _ => (),
-        }
-    }
-}
+use domtui::views::{Empty, InputField, Paragraph, ScreenBuilder, Stack};
+use ratatui::style::{Color, Style};
 
 fn main() {
     let mut builder = ScreenBuilder::new();
 
-    let root_view = Stack::equal_split_horizontal((
-        builder.add_interactive(TextBlock::new("hello\n你好")),
-        builder.add_interactive(TextBlock::new("world\n世界")),
-        Stack::equal_split_vertical((
-            Stack::equal_split_vertical((
-                builder.add_interactive(
+    let root_view = Stack::horizontal((
+        Paragraph::new("hello\n你好").style(Style::new().bg(Color::LightBlue).fg(Color::Black)),
+        Paragraph::new("world\n世界").style(Style::new().bg(Color::LightCyan).fg(Color::Black)),
+        Stack::vertical((
+            Stack::vertical((
+                builder.interactive(InputField::default().placeholder("Type something here...")),
+                builder.interactive(
                     InputField::default()
-                        .placeholder("I'm leslie.")
-                        .text("I'm leslie.")
+                        .placeholder("Type something here...")
+                        .text("This is an input field with pre-filled text")
                         .cursor_at_end(),
                 ),
-                builder
-                    .add_interactive(InputField::default().placeholder("This is an input field")),
             )),
             Empty,
-            builder.add_interactive(TextBlock::new("This is the thing I made.")),
-            builder.add_interactive(TextBlock::new("Which is a DOM-based TUI framework.")),
-            builder.add_interactive(TextBlock::new(
-                "Wrapped on top of ratatui, a none-DOM-based, barebone TUI framework.",
-            )),
         )),
     ));
 
     let mut screen = builder.finish(root_view);
 
     let mut terminal = domtui::setup_terminal();
-    'event_loop: loop {
-        screen.render(&mut terminal).unwrap();
-        if !event::poll(std::time::Duration::from_millis(100)).unwrap() {
-            continue 'event_loop;
-        }
-        match event::read().unwrap() {
-            Event::Key(KeyEvent {
-                code: KeyCode::Char('c' | 'q'),
-                modifiers: KeyModifiers::CONTROL,
-                kind: KeyEventKind::Press,
-                state: _,
-            }) => {
-                break 'event_loop;
-            }
-            event => {
-                screen.handle_event(event);
-                continue 'event_loop;
-            }
-        }
-    }
-
+    domtui::default_event_loop(&mut terminal, &mut screen).unwrap();
     domtui::restore_terminal(terminal);
 }
