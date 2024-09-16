@@ -31,8 +31,7 @@ pub fn render<V: StaticView, B: Backend>(terminal: &mut Terminal<B>, view: V) ->
     screen.render(terminal)
 }
 
-/// Simple event loop for just having `Screen`.
-/// Ends on `<C-q>`.
+/// Simple event loop for just rendering a `Screen` with nothing else, ends on `<C-q>`.
 pub fn default_event_loop<V: StaticView, B: Backend>(
     terminal: &mut Terminal<B>,
     screen: &mut Screen<V>,

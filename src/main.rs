@@ -2,8 +2,6 @@
 
 pub mod domtui;
 
-use std::borrow::Cow;
-
 use domtui::views::{InputField, Paragraph, ScreenBuilder, Stack};
 use ratatui::{
     style::{Color, Style},
@@ -16,29 +14,35 @@ fn borders(fg: Color) -> Block<'static> {
         .style(Style::new().fg(fg))
 }
 
-fn input_field<'a>(
-    placeholder: impl Into<Cow<'a, str>>,
-    text: impl Into<String>,
-) -> InputField<'a> {
-    InputField::default()
-        .placeholder(placeholder.into())
-        .text(text.into())
-        .cursor_at_end()
-        .block_focused(borders(Color::LightYellow))
-        .block_unfocused(borders(Color::DarkGray))
-}
-
 fn main() {
     let mut builder = ScreenBuilder::new();
 
     let root_view = Stack::horizontal((
-        // Stacks can have variable number of children (allows 0~12).
-        Paragraph::new("HELLO\n你好").style(Style::new().bg(Color::LightYellow).fg(Color::Black)),
-        Paragraph::new("WORLD\n世界").style(Style::new().bg(Color::LightCyan).fg(Color::Black)),
-        Stack::vertical((Stack::vertical((
-            builder.dynamic_site(input_field("Type something here...", "")),
-            builder.dynamic_site(input_field("Type something here...", "UTF-8 文本编辑!")),
-        )),)),
+        Paragraph::new("HELLO\n你好")
+            .bg(Color::LightYellow)
+            .fg(Color::Black),
+        Paragraph::new("WORLD\n世界")
+            .bg(Color::LightCyan)
+            .fg(Color::Black),
+        Stack::vertical((
+            builder.tagged_dynamic_site(
+                "input_field0",
+                InputField::default()
+                    .placeholder("Type something here...")
+                    .text("")
+                    .block_focused(borders(Color::LightYellow))
+                    .block_unfocused(borders(Color::DarkGray)),
+            ),
+            builder.tagged_dynamic_site(
+                "input_field1",
+                InputField::default()
+                    .placeholder("Type something here...")
+                    .text("UTF-8 文本编辑!")
+                    .cursor_at_end()
+                    .block_focused(borders(Color::LightYellow))
+                    .block_unfocused(borders(Color::DarkGray)),
+            ),
+        )),
     ));
 
     let mut screen = builder.finish(root_view);

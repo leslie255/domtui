@@ -3,6 +3,7 @@
 use std::{
     borrow::Cow,
     cell::RefCell,
+    collections::HashMap,
     fmt::{self, Debug},
     io,
     rc::{Rc, Weak},
@@ -14,7 +15,7 @@ use ratatui::{
     backend::Backend,
     crossterm::event::{Event, KeyCode, KeyEvent, KeyEventKind, KeyModifiers},
     layout::{Alignment, Constraint, Direction, Layout, Rect},
-    style::{Color, Style},
+    style::{Color, Modifier, Style, Styled},
     text::{Line, Span, Text},
     widgets::{self, Block, Wrap},
     Frame, Terminal,
@@ -30,12 +31,14 @@ use super::{
 pub struct Screen<'a, V: StaticView + 'a> {
     root_view: V,
     dynamic_sites: Vec<DynamicViewWrapperWeakRef<'a>>,
+    dynamic_site_tags: HashMap<Cow<'a, str>, DynamicViewWrapperWeakRef<'a>>,
 }
 
 /// `'a` for allowing to borrow from a data source.
 #[derive(Debug, Clone, Default)]
 pub struct ScreenBuilder<'a> {
     dynamic_sites: Vec<DynamicViewWrapperWeakRef<'a>>,
+    dynamic_site_tags: HashMap<Cow<'a, str>, DynamicViewWrapperWeakRef<'a>>,
 }
 
 impl<'a> ScreenBuilder<'a> {
@@ -44,12 +47,10 @@ impl<'a> ScreenBuilder<'a> {
     }
 
     pub fn finish<V: StaticView>(self, root_view: V) -> Screen<'a, V> {
-        if let Some(first_iv) = self.dynamic_sites.first() {
-            first_iv.upgrade().unwrap().inner.borrow_mut().is_focused = true;
-        }
         Screen {
             root_view,
             dynamic_sites: self.dynamic_sites,
+            dynamic_site_tags: self.dynamic_site_tags,
         }
     }
 
@@ -59,15 +60,24 @@ impl<'a> ScreenBuilder<'a> {
         self.dynamic_sites.push(view.downgrade());
         view
     }
+
+    /// Wrap a `View` into a `DynamicViewWrapper`.
+    pub fn tagged_dynamic_site(
+        &mut self,
+        tag: impl Into<Cow<'a, str>>,
+        view: impl View + 'a,
+    ) -> DynamicViewWrapper<'a> {
+        let view = DynamicViewWrapper::new(false, view);
+        self.dynamic_site_tags.insert(tag.into(), view.downgrade());
+        self.dynamic_sites.push(view.downgrade());
+        view
+    }
 }
 
 impl<'a, V: StaticView + 'a> Screen<'a, V> {
     /// Create a screen with no dynamic views.
     pub fn new(root_view: V) -> Self {
-        Self {
-            root_view,
-            dynamic_sites: Vec::new(),
-        }
+        ScreenBuilder::default().finish(root_view)
     }
 
     pub fn render<B: Backend>(&self, terminal: &mut Terminal<B>) -> io::Result<()> {
@@ -84,10 +94,32 @@ impl<'a, V: StaticView + 'a> Screen<'a, V> {
 
     /// This has the same effect as calling `ScreenBuilder::dynamic_site` before the screen was
     /// built.
-    pub fn create_dynamic_site(&mut self, view: impl View + 'a) -> DynamicViewWrapper<'a> {
+    pub fn dynamic_site(&mut self, view: impl View + 'a) -> DynamicViewWrapper<'a> {
         let dynamic_site = DynamicViewWrapper::new(false, view);
         self.dynamic_sites.push(dynamic_site.downgrade());
         dynamic_site
+    }
+
+    /// If multiple views were tagged the same, only one of them is inspected, randomly.
+    pub fn inspect_view_with_tag<T>(
+        &self,
+        tag: &str,
+        f: impl FnOnce(&(dyn View + 'a)) -> T,
+    ) -> Option<T> {
+        self.dynamic_site_tags
+            .get(tag)
+            .map(|view| view.upgrade().unwrap().inspect(f))
+    }
+
+    /// If multiple views were tagged the same, only one of them is inspected, randomly.
+    pub fn inspect_view_with_tag_mut<T>(
+        &self,
+        tag: &str,
+        f: impl FnOnce(&mut (dyn View + 'a)) -> T,
+    ) -> Option<T> {
+        self.dynamic_site_tags
+            .get(tag)
+            .map(|view| view.upgrade().unwrap().inspect_mut(f))
     }
 
     /// Switch focus to the next focusable view.
@@ -176,8 +208,8 @@ impl<'a, V: StaticView + 'a> Screen<'a, V> {
     }
 
     /// Returns the view currently in focus in the form of a `DynamicViewWrapper`.
-    /// Returns `None` if no view (including the situation where a view was focused but was since
-    /// deleted).
+    /// Returns `None` if no view is in focus (including the situation where a view was focused but
+    /// was since deleted).
     pub fn focused<'b>(&'b self) -> Option<DynamicViewWrapper<'a>> {
         let iv_weak = self
             .dynamic_sites
@@ -214,6 +246,9 @@ impl<'a, V: StaticView + 'a> Screen<'a, V> {
     }
 }
 
+/// `StaticView`s are a subset of `View`s that are static.
+/// A dynamic `View` can be wrapped into a `StaticView` through `DynamicViewWrapper`, which can
+/// only be created by `ScreenBuilder::dynamic_site` or `Screen::dynamic_site`.
 pub trait StaticView {
     fn render_static(&self, frame: &mut Frame, area: Rect);
 }
@@ -223,10 +258,6 @@ impl<V: StaticView> View for V {
     fn render(&self, frame: &mut Frame, area: Rect, _is_focused: bool) {
         self.render_static(frame, area)
     }
-
-    fn is_focusable(&self) -> bool {
-        false
-    }
 }
 
 #[allow(unused_variables)]
@@ -234,7 +265,7 @@ pub trait View {
     fn render(&self, frame: &mut Frame, area: Rect, is_focused: bool);
 
     fn is_focusable(&self) -> bool {
-        true
+        false
     }
 
     fn on_focus(&mut self) {}
@@ -268,13 +299,13 @@ impl<'a> DynamicViewWrapper<'a> {
     }
 
     /// Do something to the wrapped `DynamicView`.
-    pub fn inspect<T>(&self, f: impl FnOnce(&dyn View) -> T) -> T {
+    pub fn inspect<T>(&self, f: impl FnOnce(&(dyn View + 'a)) -> T) -> T {
         let inner = self.inner.borrow();
         f(inner.view.as_ref())
     }
 
     /// Do something to the wrapped `DynamicView`.
-    pub fn inspect_mut<T>(&self, f: impl FnOnce(&mut dyn View) -> T) -> T {
+    pub fn inspect_mut<T>(&self, f: impl FnOnce(&mut (dyn View + 'a)) -> T) -> T {
         let mut inner = self.inner.borrow_mut();
         f(inner.view.as_mut())
     }
@@ -337,6 +368,25 @@ impl<'a> Paragraph<'a> {
     pub fn style(mut self, style: Style) -> Self {
         self.widget = self.widget.style(style);
         self
+    }
+
+    pub fn get_style(&self) -> Style {
+        <widgets::Paragraph as Styled>::style(&self.widget)
+    }
+
+    pub fn fg(self, color: Color) -> Self {
+        let style = self.get_style().fg(color);
+        self.style(style)
+    }
+
+    pub fn bg(self, color: Color) -> Self {
+        let style = self.get_style().bg(color);
+        self.style(style)
+    }
+
+    pub fn add_modifier(self, modifier: Modifier) -> Self {
+        let style = self.get_style().add_modifier(modifier);
+        self.style(style)
     }
 
     pub fn wrap(mut self, wrap: Wrap) -> Self {
@@ -550,6 +600,10 @@ impl<'a> View for InputField<'a> {
             .block(block)
             .wrap(Wrap { trim: false });
         paragraph.render_static(frame, area);
+    }
+
+    fn is_focusable(&self) -> bool {
+        true
     }
 
     fn on_key_event(&mut self, key_event: KeyEvent) {
