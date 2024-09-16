@@ -6,7 +6,7 @@ use std::{error::Error, mem};
 
 use copypasta::{ClipboardContext, ClipboardProvider};
 
-fn len_of_codepoint_on(s: &str, index: usize) -> Option<usize> {
+pub(crate) fn len_of_codepoint_on(s: &str, index: usize) -> Option<usize> {
     let byte = *s.as_bytes().get(index)?;
     match byte {
         0b00000000..=0b01111111 => Some(1),
@@ -26,7 +26,7 @@ fn len_of_codepoint_on(s: &str, index: usize) -> Option<usize> {
 /// ... where `A`, `B`, `C`, etc. represents possible multi-byte code points, and `index` points to
 /// the first byte of `D`.
 /// Returns length of `C`.
-fn len_of_prev_codepoint(s: &str, index: usize) -> Option<usize> {
+pub(crate) fn len_of_prev_codepoint(s: &str, index: usize) -> Option<usize> {
     let mut bytes = s.as_bytes().get(..index)?.iter();
 
     // 0xxxxxxx
@@ -55,7 +55,7 @@ fn len_of_prev_codepoint(s: &str, index: usize) -> Option<usize> {
 /// Move `index` one character forward.
 /// Returns `true` if `index` is moved, `false` if not moved because of range.
 /// Note `index` can be one-past.
-fn index_next(s: &str, index: &mut usize) -> bool {
+pub(crate) fn index_next(s: &str, index: &mut usize) -> bool {
     let Some(len) = len_of_codepoint_on(s, *index) else {
         return false;
     };
@@ -66,7 +66,7 @@ fn index_next(s: &str, index: &mut usize) -> bool {
 /// Move `index` one character forward.
 /// Returns `true` if `index` is moved, `false` if not moved because of range.
 /// Note `index` can be one-past.
-fn index_prev(s: &str, index: &mut usize) -> bool {
+pub(crate) fn index_prev(s: &str, index: &mut usize) -> bool {
     let Some(len) = len_of_prev_codepoint(s, *index) else {
         return false;
     };

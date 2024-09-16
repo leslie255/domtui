@@ -21,7 +21,7 @@ use ratatui::{
 };
 
 use super::{
-    input_field::{Cursor, InputFieldContent},
+    input_field::{self, Cursor, InputFieldContent},
     view_tuple::ViewTuple,
 };
 
@@ -442,8 +442,8 @@ impl<'a> Default for InputField<'a> {
         Self {
             placeholder: Cow::default(),
             content: InputFieldContent::default(),
-            style_focused: Style::default(),
-            style_unfocused: Style::default(),
+            style_focused: Style::default().fg(Color::White),
+            style_unfocused: Style::default().fg(Color::White),
             style_placeholder: Style::new().fg(Color::DarkGray),
             style_selection: Style::new().bg(Color::LightBlue).fg(Color::Black),
             block_focused: Block::default(),
@@ -511,37 +511,39 @@ impl<'a> InputField<'a> {
         &mut self.content
     }
 
-    fn paragraph(&'a self, is_focused: bool) -> Paragraph<'a> {
+    fn render_paragraph(&'a self, is_focused: bool) -> Paragraph<'a> {
         let text = self.content.text();
         if text.is_empty() {
-            return self.placeholder_paragraph(is_focused);
+            return self.render_placeholder_paragraph(is_focused);
         }
         if !is_focused {
-            return Paragraph::new(text);
+            return Paragraph::new(text).style(self.style_unfocused);
         }
         match self.content.cursor() {
             Cursor::Caret(caret) => {
                 if self.content.caret_is_at_end() {
                     return Paragraph::new(Line::from(vec![
-                        Span::raw(text),
+                        Span::styled(text, self.style_focused),
                         Span::styled(" ", self.caret_style()),
                     ]));
                 }
+                let mut caret_next = caret;
+                input_field::index_next(text, &mut caret_next);
                 Paragraph::new(Line::from(vec![
-                    Span::raw(&text[0..caret]),
-                    Span::styled(&text[caret..caret + 1], self.caret_style()),
-                    Span::raw(&text[caret + 1..]),
+                    Span::styled(&text[0..caret], self.style_focused),
+                    Span::styled(&text[caret..caret_next], self.caret_style()),
+                    Span::styled(&text[caret_next..], self.style_focused),
                 ]))
             }
             Cursor::Selection(range) => Paragraph::new(Line::from(vec![
-                Span::raw(&text[0..range.start]),
+                Span::styled(&text[0..range.start], self.style_focused),
                 Span::styled(&text[range], self.style_selection),
-                Span::raw(&text[range.end..]),
+                Span::styled(&text[range.end..], self.style_focused),
             ])),
         }
     }
 
-    fn placeholder_paragraph(&'a self, is_focused: bool) -> Paragraph<'a> {
+    fn render_placeholder_paragraph(&'a self, is_focused: bool) -> Paragraph<'a> {
         if is_focused {
             let placeholder: &'a str = match &self.placeholder {
                 Cow::Borrowed(s) => s,
@@ -569,17 +571,13 @@ impl<'a> InputField<'a> {
 
 impl<'a> InteractiveView for InputField<'a> {
     fn render(&self, frame: &mut Frame, area: Rect, is_focused: bool) {
-        if is_focused {
-            let cursor_x = self.content.primary_caret() as u16;
-            frame.set_cursor_position((area.x + 1 + cursor_x, area.y + 1));
-        }
         let block = if is_focused {
             self.block_focused.clone()
         } else {
             self.block_unfocused.clone()
         };
         let paragraph = self
-            .paragraph(is_focused)
+            .render_paragraph(is_focused)
             .block(block)
             .wrap(Wrap { trim: false });
         paragraph.render(frame, area);
