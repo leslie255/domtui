@@ -27,15 +27,15 @@ use super::{
 
 /// `'a` for allowing to borrow from a data source.
 #[derive(Debug, Clone)]
-pub struct Screen<'a, V: View + 'a> {
+pub struct Screen<'a, V: StaticView + 'a> {
     root_view: V,
-    interactive_views: Vec<InteractiveViewWeakRef<'a>>,
+    dynamic_sites: Vec<DynamicSiteWeakRef<'a>>,
 }
 
 /// `'a` for allowing to borrow from a data source.
 #[derive(Debug, Clone, Default)]
 pub struct ScreenBuilder<'a> {
-    interactive_views: Vec<InteractiveViewWeakRef<'a>>,
+    dynamic_sites: Vec<DynamicSiteWeakRef<'a>>,
 }
 
 impl<'a> ScreenBuilder<'a> {
@@ -43,33 +43,30 @@ impl<'a> ScreenBuilder<'a> {
         Self::default()
     }
 
-    pub fn finish<V: View>(self, root_view: V) -> Screen<'a, V> {
-        if let Some(first_iv) = self.interactive_views.first() {
+    pub fn finish<V: StaticView>(self, root_view: V) -> Screen<'a, V> {
+        if let Some(first_iv) = self.dynamic_sites.first() {
             first_iv.upgrade().unwrap().inner.borrow_mut().is_focused = true;
         }
         Screen {
             root_view,
-            interactive_views: self.interactive_views,
+            dynamic_sites: self.dynamic_sites,
         }
     }
 
-    /// Wrap an `InteractiveView` into a `View`.
-    pub fn interactive(
-        &mut self,
-        interactive_view: impl InteractiveView + 'a,
-    ) -> InteractiveViewWrapper<'a> {
-        let interactive_view = InteractiveViewWrapper::new(false, interactive_view);
-        self.interactive_views.push(interactive_view.downgrade());
-        interactive_view
+    /// Wrap a `View` into a `DynamicSite`.
+    pub fn dynamic_site(&mut self, view: impl View + 'a) -> DynamicSite<'a> {
+        let view = DynamicSite::new(false, view);
+        self.dynamic_sites.push(view.downgrade());
+        view
     }
 }
 
-impl<'a, V: View + 'a> Screen<'a, V> {
+impl<'a, V: StaticView + 'a> Screen<'a, V> {
     /// Create a screen with no dynamic views.
     pub fn new(root_view: V) -> Self {
         Self {
             root_view,
-            interactive_views: Vec::new(),
+            dynamic_sites: Vec::new(),
         }
     }
 
@@ -77,7 +74,7 @@ impl<'a, V: View + 'a> Screen<'a, V> {
         terminal.autoresize()?;
         let mut frame = terminal.get_frame();
         let area = frame.area();
-        self.root_view.render(&mut frame, area);
+        self.root_view.render_static(&mut frame, area);
         terminal.hide_cursor()?;
         terminal.flush()?;
         terminal.swap_buffers();
@@ -85,26 +82,24 @@ impl<'a, V: View + 'a> Screen<'a, V> {
         Ok(())
     }
 
-    /// Wrap an `InteractiveView` into a `View`.
-    pub fn add_interactive(
-        &mut self,
-        interactive_view: impl InteractiveView + 'a,
-    ) -> InteractiveViewWrapper<'a> {
-        let interactive_view = InteractiveViewWrapper::new(false, interactive_view);
-        self.interactive_views.push(interactive_view.downgrade());
-        interactive_view
+    /// This has the same effect as calling `ScreenBuilder::dynamic_site` before the screen was
+    /// built.
+    pub fn create_dynamic_site(&mut self, view: impl View + 'a) -> DynamicSite<'a> {
+        let dynamic_site = DynamicSite::new(false, view);
+        self.dynamic_sites.push(dynamic_site.downgrade());
+        dynamic_site
     }
 
     /// Switch focus to the next focusable view.
-    /// A focusable view is an `InteractiveView` with its `is_focusable` returning `true`.
+    /// A focusable view is an `DynamicView` with its `is_focusable` returning `true`.
     pub fn focus_next(&mut self) {
         // Unfocus the currnet one.
         // FIXME: make this more efficient by keeping track the of index of the focused view.
-        if self.interactive_views.is_empty() {
+        if self.dynamic_sites.is_empty() {
             return;
         }
         let (idx, focused_view) = self
-            .interactive_views
+            .dynamic_sites
             .iter()
             .enumerate()
             .find(|(_, weak_iv)| weak_iv.upgrade().unwrap().inner.borrow().is_focused)
@@ -117,9 +112,9 @@ impl<'a, V: View + 'a> Screen<'a, V> {
         }
 
         // Focus the next focusable.
-        let next_focusable = self.interactive_views[(idx + 1)..]
+        let next_focusable = self.dynamic_sites[(idx + 1)..]
             .iter()
-            .chain(self.interactive_views[..idx].iter())
+            .chain(self.dynamic_sites[..idx].iter())
             .find(|&weak_iv| {
                 weak_iv
                     .upgrade()
@@ -138,15 +133,15 @@ impl<'a, V: View + 'a> Screen<'a, V> {
     }
 
     /// Switch focus to the previous focusable view.
-    /// A focusable view is an `InteractiveView` with its `is_focusable` returning `true`.
+    /// A focusable view is an `DynamicSite` with its `is_focusable` returning `true`.
     pub fn focus_prev(&mut self) {
         // Unfocus the currnet one.
         // FIXME: make this more efficient by keeping track the of index of the focused view.
-        if self.interactive_views.is_empty() {
+        if self.dynamic_sites.is_empty() {
             return;
         }
         let (idx, focused_view) = self
-            .interactive_views
+            .dynamic_sites
             .iter()
             .rev()
             .enumerate()
@@ -160,9 +155,9 @@ impl<'a, V: View + 'a> Screen<'a, V> {
         }
 
         // Focus the next focusable.
-        let next_focusable = self.interactive_views[..idx]
+        let next_focusable = self.dynamic_sites[..idx]
             .iter()
-            .chain(self.interactive_views[(idx + 1)..].iter())
+            .chain(self.dynamic_sites[(idx + 1)..].iter())
             .find(|&weak_iv| {
                 weak_iv
                     .upgrade()
@@ -180,12 +175,12 @@ impl<'a, V: View + 'a> Screen<'a, V> {
         }
     }
 
-    /// Returns the `InteractiveView` currently in focus.
+    /// Returns the `DynamicSite` currently in focus.
     /// Returns `None` if no view (including the situation where a view was focused but was since
     /// deleted).
-    pub fn focused_view<'b>(&'b self) -> Option<InteractiveViewWrapper<'a>> {
+    pub fn focused<'b>(&'b self) -> Option<DynamicSite<'a>> {
         let iv_weak = self
-            .interactive_views
+            .dynamic_sites
             .iter()
             .find(|iv_weak| iv_weak.upgrade().unwrap().inner.borrow().is_focused)?;
         iv_weak.upgrade()
@@ -210,7 +205,7 @@ impl<'a, V: View + 'a> Screen<'a, V> {
                 self.focus_next();
             }
             Event::Key(key_event) => {
-                if let Some(focused_view) = self.focused_view() {
+                if let Some(focused_view) = self.focused() {
                     focused_view.inner.borrow_mut().view.on_key_event(key_event);
                 }
             }
@@ -219,26 +214,23 @@ impl<'a, V: View + 'a> Screen<'a, V> {
     }
 }
 
-pub trait View {
-    fn render(&self, frame: &mut Frame, area: Rect);
+pub trait StaticView {
+    fn render_static(&self, frame: &mut Frame, area: Rect);
 }
 
-impl<'a, V: View> View for &'a V {
-    fn render(&self, frame: &mut Frame, area: Rect) {
-        <V as View>::render(*self, frame, area)
+/// All static views are dynamic views.
+impl<V: StaticView> View for V {
+    fn render(&self, frame: &mut Frame, area: Rect, _is_focused: bool) {
+        self.render_static(frame, area)
+    }
+
+    fn is_focusable(&self) -> bool {
+        false
     }
 }
 
-impl<'a, V: View> View for &'a mut V {
-    fn render(&self, frame: &mut Frame, area: Rect) {
-        <V as View>::render(*self, frame, area)
-    }
-}
-
-/// A `DynamicView` can be wrapped into a `View` by `DynamicSite`, which can only be dispatched by
-/// a Screen.
 #[allow(unused_variables)]
-pub trait InteractiveView {
+pub trait View {
     fn render(&self, frame: &mut Frame, area: Rect, is_focused: bool);
 
     fn is_focusable(&self) -> bool {
@@ -252,41 +244,16 @@ pub trait InteractiveView {
     fn on_key_event(&mut self, key_event: KeyEvent) {}
 }
 
-impl<'a, IV: InteractiveView> InteractiveView for &'a mut IV {
-    fn render(&self, frame: &mut Frame, area: Rect, is_focused: bool) {
-        <IV as InteractiveView>::render(*self, frame, area, is_focused)
-    }
-
-    fn is_focusable(&self) -> bool {
-        <IV as InteractiveView>::is_focusable(*self)
-    }
-
-    fn on_focus(&mut self) {
-        <IV as InteractiveView>::on_focus(*self)
-    }
-
-    fn on_unfocus(&mut self) {
-        <IV as InteractiveView>::on_unfocus(*self)
-    }
-
-    fn on_key_event(&mut self, key_event: KeyEvent) {
-        <IV as InteractiveView>::on_key_event(*self, key_event)
-    }
-}
-
-/// This is a wrapper that turns a `IV: InteractiveView` into a `View`.
-/// It can only be created by a `ScreenBuilder` or a `Screen`.
-/// `'a` for allowing to borrow from a data source.
 #[derive(Debug, Clone, From)]
-pub struct InteractiveViewWrapper<'a> {
-    inner: Rc<RefCell<InteractiveViewWrapperInner<'a>>>,
+pub struct DynamicSite<'a> {
+    inner: Rc<RefCell<DynamicSiteInner<'a>>>,
 }
 
-impl<'a> InteractiveViewWrapper<'a> {
-    fn new(is_focused: bool, interactive_view: impl InteractiveView + 'a) -> Self {
-        let inner = InteractiveViewWrapperInner {
+impl<'a> DynamicSite<'a> {
+    fn new(is_focused: bool, view: impl View + 'a) -> Self {
+        let inner = DynamicSiteInner {
             is_focused,
-            view: Box::new(interactive_view),
+            view: Box::new(view),
         };
         Self {
             inner: Rc::new(RefCell::new(inner)),
@@ -294,39 +261,39 @@ impl<'a> InteractiveViewWrapper<'a> {
     }
 
     /// Downgrade to a `Weak` reference.
-    fn downgrade(&self) -> InteractiveViewWeakRef<'a> {
+    fn downgrade(&self) -> DynamicSiteWeakRef<'a> {
         Rc::downgrade(&self.inner).into()
     }
 
-    /// Do something to the wrapped `InteractiveView`.
-    pub fn inspect<T>(&self, f: impl FnOnce(&dyn InteractiveView) -> T) -> T {
+    /// Do something to the wrapped `DynamicView`.
+    pub fn inspect<T>(&self, f: impl FnOnce(&dyn View) -> T) -> T {
         let inner = self.inner.borrow();
         f(inner.view.as_ref())
     }
 
-    /// Do something to the wrapped `InteractiveView`.
-    pub fn inspect_mut<T>(&self, f: impl FnOnce(&mut dyn InteractiveView) -> T) -> T {
+    /// Do something to the wrapped `DynamicView`.
+    pub fn inspect_mut<T>(&self, f: impl FnOnce(&mut dyn View) -> T) -> T {
         let mut inner = self.inner.borrow_mut();
         f(inner.view.as_mut())
     }
 }
 
-impl View for InteractiveViewWrapper<'_> {
-    fn render(&self, frame: &mut Frame, area: Rect) {
+impl StaticView for DynamicSite<'_> {
+    fn render_static(&self, frame: &mut Frame, area: Rect) {
         let inner = self.inner.borrow();
         inner.view.render(frame, area, inner.is_focused);
     }
 }
 
-struct InteractiveViewWrapperInner<'a> {
+struct DynamicSiteInner<'a> {
     is_focused: bool,
     /// FIXME: Remove this `Box` for one less indirection.
-    view: Box<dyn InteractiveView + 'a>,
+    view: Box<dyn View + 'a>,
 }
 
-impl Debug for InteractiveViewWrapperInner<'_> {
+impl Debug for DynamicSiteInner<'_> {
     fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
-        f.debug_struct("InteractiveViewWrapperInner")
+        f.debug_struct("DynamicSiteInner")
             .field("is_focused", &self.is_focused)
             .finish_non_exhaustive()
     }
@@ -334,14 +301,14 @@ impl Debug for InteractiveViewWrapperInner<'_> {
 
 /// FIXME: Maybe expose this in the future as API.
 #[derive(Debug, Clone, Default, From)]
-struct InteractiveViewWeakRef<'a> {
-    weak: Weak<RefCell<InteractiveViewWrapperInner<'a>>>,
+struct DynamicSiteWeakRef<'a> {
+    weak: Weak<RefCell<DynamicSiteInner<'a>>>,
 }
 
-impl<'a> InteractiveViewWeakRef<'a> {
+impl<'a> DynamicSiteWeakRef<'a> {
     /// Like `Weak::upgrade`, it may fail when either the original `Rc` is dropped or the `Weak` is
     /// null.
-    fn upgrade(&self) -> Option<InteractiveViewWrapper<'a>> {
+    fn upgrade(&self) -> Option<DynamicSite<'a>> {
         self.weak.upgrade().map(Into::into)
     }
 }
@@ -349,8 +316,8 @@ impl<'a> InteractiveViewWeakRef<'a> {
 #[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord, Hash)]
 pub struct Empty;
 
-impl View for Empty {
-    fn render(&self, _frame: &mut Frame, _area: Rect) {}
+impl StaticView for Empty {
+    fn render_static(&self, _frame: &mut Frame, _area: Rect) {}
 }
 
 #[derive(Debug, Clone, PartialEq, Eq, Hash)]
@@ -386,8 +353,8 @@ impl<'a> Paragraph<'a> {
     }
 }
 
-impl<'a> View for Paragraph<'a> {
-    fn render(&self, frame: &mut Frame, area: Rect) {
+impl<'a> StaticView for Paragraph<'a> {
+    fn render_static(&self, frame: &mut Frame, area: Rect) {
         frame.render_widget(&self.widget, area);
     }
 }
@@ -418,8 +385,8 @@ impl<Children: ViewTuple> Stack<Children> {
     }
 }
 
-impl<Children: ViewTuple> View for Stack<Children> {
-    fn render(&self, frame: &mut Frame, area: Rect) {
+impl<Children: ViewTuple> StaticView for Stack<Children> {
+    fn render_static(&self, frame: &mut Frame, area: Rect) {
         let chunks = self.layout.split(area);
         self.children.render_each(frame, |i| chunks[i])
     }
@@ -569,7 +536,7 @@ impl<'a> InputField<'a> {
     }
 }
 
-impl<'a> InteractiveView for InputField<'a> {
+impl<'a> View for InputField<'a> {
     fn render(&self, frame: &mut Frame, area: Rect, is_focused: bool) {
         let block = if is_focused {
             self.block_focused.clone()
@@ -580,7 +547,7 @@ impl<'a> InteractiveView for InputField<'a> {
             .render_paragraph(is_focused)
             .block(block)
             .wrap(Wrap { trim: false });
-        paragraph.render(frame, area);
+        paragraph.render_static(frame, area);
     }
 
     fn on_key_event(&mut self, key_event: KeyEvent) {

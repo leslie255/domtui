@@ -36,8 +36,8 @@ fn main() {
         Paragraph::new("HELLO\n你好").style(Style::new().bg(Color::LightYellow).fg(Color::Black)),
         Paragraph::new("WORLD\n世界").style(Style::new().bg(Color::LightCyan).fg(Color::Black)),
         Stack::vertical((Stack::vertical((
-            builder.interactive(input_field("Type something here...", "")),
-            builder.interactive(input_field("Type something here...", "UTF-8 文本编辑!")),
+            builder.dynamic_site(input_field("Type something here...", "")),
+            builder.dynamic_site(input_field("Type something here...", "UTF-8 文本编辑!")),
         )),)),
     ));
 

@@ -9,7 +9,7 @@ use ratatui::{
     crossterm::{self, event::{self, Event, KeyCode, KeyEvent, KeyEventKind, KeyModifiers}}, Terminal,
 };
 
-use views::{Screen, View};
+use views::{Screen, StaticView};
 
 pub fn setup_terminal() -> Terminal<CrosstermBackend<Stdout>> {
     use crossterm::event::EnableMouseCapture;
@@ -26,14 +26,14 @@ pub fn restore_terminal(mut terminal: Terminal<CrosstermBackend<Stdout>>) {
 
 /// Shorthand for rendering a view with no dynamic parts.
 /// For rendering views with dynamic parts, use `Screen`.
-pub fn render<V: View, B: Backend>(terminal: &mut Terminal<B>, view: V) -> io::Result<()> {
+pub fn render<V: StaticView, B: Backend>(terminal: &mut Terminal<B>, view: V) -> io::Result<()> {
     let screen = Screen::new(view);
     screen.render(terminal)
 }
 
 /// Simple event loop for just having `Screen`.
 /// Ends on `<C-q>`.
-pub fn default_event_loop<V: View, B: Backend>(
+pub fn default_event_loop<V: StaticView, B: Backend>(
     terminal: &mut Terminal<B>,
     screen: &mut Screen<V>,
 ) -> io::Result<()> {
