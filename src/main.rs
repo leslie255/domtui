@@ -50,4 +50,15 @@ fn main() {
     let mut terminal = domtui::setup_terminal();
     domtui::default_event_loop(&mut terminal, &mut screen).unwrap();
     domtui::restore_terminal(terminal);
+
+    unsafe {
+        screen.inspect_view_with_tag_unchecked::<(), InputField>("input_field0", |input_field| {
+            let text = input_field.content().text();
+            println!("input_field0: {text:?}")
+        });
+        screen.inspect_view_with_tag_unchecked::<(), InputField>("input_field1", |input_field| {
+            let text = input_field.content().text();
+            println!("input_field1: {text:?}")
+        });
+    }
 }

@@ -101,29 +101,20 @@ impl<'a, V: StaticView + 'a> Screen<'a, V> {
     }
 
     /// If multiple views were tagged the same, only one of them is inspected, randomly.
-    pub fn inspect_view_with_tag<T>(
+    ///
+    /// # Safety
+    /// `V` must be of the correct type that the value was initialized with.
+    pub unsafe fn inspect_view_with_tag_unchecked<T, V2: View + 'a>(
         &self,
         tag: &str,
-        f: impl FnOnce(&(dyn View + 'a)) -> T,
+        f: impl FnOnce(&mut V2) -> T,
     ) -> Option<T> {
-        self.dynamic_site_tags
-            .get(tag)
-            .map(|view| view.upgrade().unwrap().inspect(f))
-    }
-
-    /// If multiple views were tagged the same, only one of them is inspected, randomly.
-    pub fn inspect_view_with_tag_mut<T>(
-        &self,
-        tag: &str,
-        f: impl FnOnce(&mut (dyn View + 'a)) -> T,
-    ) -> Option<T> {
-        self.dynamic_site_tags
-            .get(tag)
-            .map(|view| view.upgrade().unwrap().inspect_mut(f))
+        let view = self.dynamic_site_tags.get(tag)?;
+        Some(view.upgrade().unwrap().inspect::<_, V2>(f))
     }
 
     /// Switch focus to the next focusable view.
-    /// A focusable view is an `DynamicView` with its `is_focusable` returning `true`.
+    /// A focusable view is an `View` with its `is_focusable` returning `true`.
     pub fn focus_next(&mut self) {
         // Unfocus the currnet one.
         // FIXME: make this more efficient by keeping track the of index of the focused view.
@@ -165,7 +156,7 @@ impl<'a, V: StaticView + 'a> Screen<'a, V> {
     }
 
     /// Switch focus to the previous focusable view.
-    /// A focusable view is an `DynamicView` with its `is_focusable` returning `true`.
+    /// A focusable view is an `View` with its `is_focusable` returning `true`.
     pub fn focus_prev(&mut self) {
         // Unfocus the currnet one.
         // FIXME: make this more efficient by keeping track the of index of the focused view.
@@ -246,7 +237,7 @@ impl<'a, V: StaticView + 'a> Screen<'a, V> {
     }
 }
 
-/// `StaticView`s are a subset of `View`s that are static.
+/// `StaticView`s are a subset of `View`s that are immutable.
 /// A dynamic `View` can be wrapped into a `StaticView` through `DynamicViewWrapper`, which can
 /// only be created by `ScreenBuilder::dynamic_site` or `Screen::dynamic_site`.
 pub trait StaticView {
@@ -298,16 +289,22 @@ impl<'a> DynamicViewWrapper<'a> {
         Rc::downgrade(&self.inner).into()
     }
 
-    /// Do something to the wrapped `DynamicView`.
-    pub fn inspect<T>(&self, f: impl FnOnce(&(dyn View + 'a)) -> T) -> T {
-        let inner = self.inner.borrow();
-        f(inner.view.as_ref())
-    }
-
-    /// Do something to the wrapped `DynamicView`.
-    pub fn inspect_mut<T>(&self, f: impl FnOnce(&mut (dyn View + 'a)) -> T) -> T {
-        let mut inner = self.inner.borrow_mut();
-        f(inner.view.as_mut())
+    /// Try to downcast the wrapped `View` into a value of `V: View` and do something to it.
+    ///
+    /// # Safety
+    /// `V` must be of the correct type that the value was initialized with.
+    pub unsafe fn inspect<T, V: View + 'a>(&self, f: impl FnOnce(&mut V) -> T) -> T {
+        trait RawPtr {
+            fn raw_ptr(&mut self) -> *mut ();
+        }
+        impl<V: View + ?Sized> RawPtr for V {
+            fn raw_ptr(&mut self) -> *mut () {
+                self as *mut V as *mut ()
+            }
+        }
+        let mut borrow_mut = self.inner.borrow_mut();
+        let view: &mut V = unsafe { &mut *(borrow_mut.view.as_mut().raw_ptr() as *mut _) };
+        f(view)
     }
 }
 
