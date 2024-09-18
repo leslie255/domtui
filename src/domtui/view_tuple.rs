@@ -1,6 +1,7 @@
 use std::convert::Infallible;
 
 use ratatui::{layout::Rect, Frame};
+use views::Size;
 
 use super::*;
 
@@ -9,73 +10,105 @@ use super::*;
 /// For practicality sake it's only implemented for tuples up to (inclusive) 12 members.
 pub trait ViewTuple {
     const LEN: usize;
-    fn render_each(&self, frame: &mut Frame, rect: impl FnMut(usize) -> Rect);
+    fn render_each(&self, frame: &mut Frame, rect: impl FnMut(usize, Option<Size>) -> Rect);
+    fn for_each_preferred_size(&self, f: impl FnMut(Option<Size>));
 }
 
 impl ViewTuple for ! {
     const LEN: usize = 0;
-    fn render_each(&self, _frame: &mut Frame, _rect: impl FnMut(usize) -> Rect) {}
+    fn render_each(&self, _frame: &mut Frame, _rect: impl FnMut(usize, Option<Size>) -> Rect) {}
+    fn for_each_preferred_size(&self, _f: impl FnMut(Option<Size>)) {}
 }
 
 impl ViewTuple for Infallible {
     const LEN: usize = 0;
-    fn render_each(&self, _frame: &mut Frame, _rect: impl FnMut(usize) -> Rect) {}
+    fn render_each(&self, _frame: &mut Frame, _rect: impl FnMut(usize, Option<Size>) -> Rect) {}
+    fn for_each_preferred_size(&self, _f: impl FnMut(Option<Size>)) {}
 }
 
 impl<V: View> ViewTuple for V {
     const LEN: usize = 1;
-    fn render_each(&self, frame: &mut Frame, mut rect: impl FnMut(usize) -> Rect) {
-        self.render_static(frame, rect(0));
+    fn render_each(&self, frame: &mut Frame, mut rect: impl FnMut(usize, Option<Size>) -> Rect) {
+        self.render(frame, rect(0, self.preferred_size()));
+    }
+    fn for_each_preferred_size(&self, mut f: impl FnMut(Option<Size>)) {
+        f(self.preferred_size());
     }
 }
 
 impl ViewTuple for () {
     const LEN: usize = 0;
-    fn render_each(&self, _frame: &mut Frame, _rect: impl FnMut(usize) -> Rect) {}
+    fn render_each(&self, _frame: &mut Frame, _rect: impl FnMut(usize, Option<Size>) -> Rect) {}
+    fn for_each_preferred_size(&self, _f: impl FnMut(Option<Size>)) {}
 }
 
 impl<V: View> ViewTuple for (V,) {
     const LEN: usize = 1;
-    fn render_each(&self, frame: &mut Frame, mut rect: impl FnMut(usize) -> Rect) {
-        self.0.render_static(frame, rect(0));
+    fn render_each(&self, frame: &mut Frame, mut rect: impl FnMut(usize, Option<Size>) -> Rect) {
+        self.0.render(frame, rect(0, self.0.preferred_size()));
+    }
+    fn for_each_preferred_size(&self, mut f: impl FnMut(Option<Size>)) {
+        f(self.0.preferred_size());
     }
 }
 
 impl<V0: View, V1: View> ViewTuple for (V0, V1) {
     const LEN: usize = 2;
-    fn render_each(&self, frame: &mut Frame, mut rect: impl FnMut(usize) -> Rect) {
-        self.0.render_static(frame, rect(0));
-        self.1.render_static(frame, rect(1));
+    fn render_each(&self, frame: &mut Frame, mut rect: impl FnMut(usize, Option<Size>) -> Rect) {
+        self.0.render(frame, rect(0, self.0.preferred_size()));
+        self.1.render(frame, rect(1, self.1.preferred_size()));
+    }
+    fn for_each_preferred_size(&self, mut f: impl FnMut(Option<Size>)) {
+        f(self.0.preferred_size());
+        f(self.1.preferred_size());
     }
 }
 
 impl<V0: View, V1: View, V2: View> ViewTuple for (V0, V1, V2) {
     const LEN: usize = 3;
-    fn render_each(&self, frame: &mut Frame, mut rect: impl FnMut(usize) -> Rect) {
-        self.0.render_static(frame, rect(0));
-        self.1.render_static(frame, rect(1));
-        self.2.render_static(frame, rect(2));
+    fn render_each(&self, frame: &mut Frame, mut rect: impl FnMut(usize, Option<Size>) -> Rect) {
+        self.0.render(frame, rect(0, self.0.preferred_size()));
+        self.1.render(frame, rect(1, self.1.preferred_size()));
+        self.2.render(frame, rect(2, self.2.preferred_size()));
+    }
+    fn for_each_preferred_size(&self, mut f: impl FnMut(Option<Size>)) {
+        f(self.0.preferred_size());
+        f(self.1.preferred_size());
+        f(self.1.preferred_size());
     }
 }
 
 impl<V0: View, V1: View, V2: View, V3: View> ViewTuple for (V0, V1, V2, V3) {
     const LEN: usize = 4;
-    fn render_each(&self, frame: &mut Frame, mut rect: impl FnMut(usize) -> Rect) {
-        self.0.render_static(frame, rect(0));
-        self.1.render_static(frame, rect(1));
-        self.2.render_static(frame, rect(2));
-        self.3.render_static(frame, rect(3));
+    fn render_each(&self, frame: &mut Frame, mut rect: impl FnMut(usize, Option<Size>) -> Rect) {
+        self.0.render(frame, rect(0, self.0.preferred_size()));
+        self.1.render(frame, rect(1, self.1.preferred_size()));
+        self.2.render(frame, rect(2, self.2.preferred_size()));
+        self.3.render(frame, rect(3, self.3.preferred_size()));
+    }
+    fn for_each_preferred_size(&self, mut f: impl FnMut(Option<Size>)) {
+        f(self.0.preferred_size());
+        f(self.1.preferred_size());
+        f(self.1.preferred_size());
+        f(self.2.preferred_size());
     }
 }
 
 impl<V0: View, V1: View, V2: View, V3: View, V4: View> ViewTuple for (V0, V1, V2, V3, V4) {
     const LEN: usize = 5;
-    fn render_each(&self, frame: &mut Frame, mut rect: impl FnMut(usize) -> Rect) {
-        self.0.render_static(frame, rect(0));
-        self.1.render_static(frame, rect(1));
-        self.2.render_static(frame, rect(2));
-        self.3.render_static(frame, rect(3));
-        self.4.render_static(frame, rect(4));
+    fn render_each(&self, frame: &mut Frame, mut rect: impl FnMut(usize, Option<Size>) -> Rect) {
+        self.0.render(frame, rect(0, self.0.preferred_size()));
+        self.1.render(frame, rect(1, self.1.preferred_size()));
+        self.2.render(frame, rect(2, self.2.preferred_size()));
+        self.3.render(frame, rect(3, self.3.preferred_size()));
+        self.4.render(frame, rect(4, self.4.preferred_size()));
+    }
+    fn for_each_preferred_size(&self, mut f: impl FnMut(Option<Size>)) {
+        f(self.0.preferred_size());
+        f(self.1.preferred_size());
+        f(self.1.preferred_size());
+        f(self.2.preferred_size());
+        f(self.3.preferred_size());
     }
 }
 
@@ -83,13 +116,21 @@ impl<V0: View, V1: View, V2: View, V3: View, V4: View, V5: View> ViewTuple
     for (V0, V1, V2, V3, V4, V5)
 {
     const LEN: usize = 6;
-    fn render_each(&self, frame: &mut Frame, mut rect: impl FnMut(usize) -> Rect) {
-        self.0.render_static(frame, rect(0));
-        self.1.render_static(frame, rect(1));
-        self.2.render_static(frame, rect(2));
-        self.3.render_static(frame, rect(3));
-        self.4.render_static(frame, rect(4));
-        self.5.render_static(frame, rect(5));
+    fn render_each(&self, frame: &mut Frame, mut rect: impl FnMut(usize, Option<Size>) -> Rect) {
+        self.0.render(frame, rect(0, self.0.preferred_size()));
+        self.1.render(frame, rect(1, self.1.preferred_size()));
+        self.2.render(frame, rect(2, self.2.preferred_size()));
+        self.3.render(frame, rect(3, self.3.preferred_size()));
+        self.4.render(frame, rect(4, self.4.preferred_size()));
+        self.5.render(frame, rect(5, self.5.preferred_size()));
+    }
+    fn for_each_preferred_size(&self, mut f: impl FnMut(Option<Size>)) {
+        f(self.0.preferred_size());
+        f(self.1.preferred_size());
+        f(self.1.preferred_size());
+        f(self.2.preferred_size());
+        f(self.3.preferred_size());
+        f(self.4.preferred_size());
     }
 }
 
@@ -97,14 +138,23 @@ impl<V0: View, V1: View, V2: View, V3: View, V4: View, V5: View, V6: View> ViewT
     for (V0, V1, V2, V3, V4, V5, V6)
 {
     const LEN: usize = 7;
-    fn render_each(&self, frame: &mut Frame, mut rect: impl FnMut(usize) -> Rect) {
-        self.0.render_static(frame, rect(0));
-        self.1.render_static(frame, rect(1));
-        self.2.render_static(frame, rect(2));
-        self.3.render_static(frame, rect(3));
-        self.4.render_static(frame, rect(4));
-        self.5.render_static(frame, rect(5));
-        self.6.render_static(frame, rect(6));
+    fn render_each(&self, frame: &mut Frame, mut rect: impl FnMut(usize, Option<Size>) -> Rect) {
+        self.0.render(frame, rect(0, self.0.preferred_size()));
+        self.1.render(frame, rect(1, self.1.preferred_size()));
+        self.2.render(frame, rect(2, self.2.preferred_size()));
+        self.3.render(frame, rect(3, self.3.preferred_size()));
+        self.4.render(frame, rect(4, self.4.preferred_size()));
+        self.5.render(frame, rect(5, self.5.preferred_size()));
+        self.6.render(frame, rect(6, self.6.preferred_size()));
+    }
+    fn for_each_preferred_size(&self, mut f: impl FnMut(Option<Size>)) {
+        f(self.0.preferred_size());
+        f(self.1.preferred_size());
+        f(self.1.preferred_size());
+        f(self.2.preferred_size());
+        f(self.3.preferred_size());
+        f(self.4.preferred_size());
+        f(self.5.preferred_size());
     }
 }
 
@@ -112,15 +162,25 @@ impl<V0: View, V1: View, V2: View, V3: View, V4: View, V5: View, V6: View, V7: V
     for (V0, V1, V2, V3, V4, V5, V6, V7)
 {
     const LEN: usize = 8;
-    fn render_each(&self, frame: &mut Frame, mut rect: impl FnMut(usize) -> Rect) {
-        self.0.render_static(frame, rect(0));
-        self.1.render_static(frame, rect(1));
-        self.2.render_static(frame, rect(2));
-        self.3.render_static(frame, rect(3));
-        self.4.render_static(frame, rect(4));
-        self.5.render_static(frame, rect(5));
-        self.6.render_static(frame, rect(6));
-        self.7.render_static(frame, rect(7));
+    fn render_each(&self, frame: &mut Frame, mut rect: impl FnMut(usize, Option<Size>) -> Rect) {
+        self.0.render(frame, rect(0, self.0.preferred_size()));
+        self.1.render(frame, rect(1, self.1.preferred_size()));
+        self.2.render(frame, rect(2, self.2.preferred_size()));
+        self.3.render(frame, rect(3, self.3.preferred_size()));
+        self.4.render(frame, rect(4, self.4.preferred_size()));
+        self.5.render(frame, rect(5, self.5.preferred_size()));
+        self.6.render(frame, rect(6, self.6.preferred_size()));
+        self.7.render(frame, rect(7, self.7.preferred_size()));
+    }
+    fn for_each_preferred_size(&self, mut f: impl FnMut(Option<Size>)) {
+        f(self.0.preferred_size());
+        f(self.1.preferred_size());
+        f(self.1.preferred_size());
+        f(self.2.preferred_size());
+        f(self.3.preferred_size());
+        f(self.4.preferred_size());
+        f(self.5.preferred_size());
+        f(self.6.preferred_size());
     }
 }
 
@@ -128,16 +188,27 @@ impl<V0: View, V1: View, V2: View, V3: View, V4: View, V5: View, V6: View, V7: V
     ViewTuple for (V0, V1, V2, V3, V4, V5, V6, V7, V8)
 {
     const LEN: usize = 9;
-    fn render_each(&self, frame: &mut Frame, mut rect: impl FnMut(usize) -> Rect) {
-        self.0.render_static(frame, rect(0));
-        self.1.render_static(frame, rect(1));
-        self.2.render_static(frame, rect(2));
-        self.3.render_static(frame, rect(3));
-        self.4.render_static(frame, rect(4));
-        self.5.render_static(frame, rect(5));
-        self.6.render_static(frame, rect(6));
-        self.7.render_static(frame, rect(7));
-        self.8.render_static(frame, rect(8));
+    fn render_each(&self, frame: &mut Frame, mut rect: impl FnMut(usize, Option<Size>) -> Rect) {
+        self.0.render(frame, rect(0, self.0.preferred_size()));
+        self.1.render(frame, rect(1, self.1.preferred_size()));
+        self.2.render(frame, rect(2, self.2.preferred_size()));
+        self.3.render(frame, rect(3, self.3.preferred_size()));
+        self.4.render(frame, rect(4, self.4.preferred_size()));
+        self.5.render(frame, rect(5, self.5.preferred_size()));
+        self.6.render(frame, rect(6, self.6.preferred_size()));
+        self.7.render(frame, rect(7, self.7.preferred_size()));
+        self.8.render(frame, rect(8, self.8.preferred_size()));
+    }
+    fn for_each_preferred_size(&self, mut f: impl FnMut(Option<Size>)) {
+        f(self.0.preferred_size());
+        f(self.1.preferred_size());
+        f(self.1.preferred_size());
+        f(self.2.preferred_size());
+        f(self.3.preferred_size());
+        f(self.4.preferred_size());
+        f(self.5.preferred_size());
+        f(self.6.preferred_size());
+        f(self.7.preferred_size());
     }
 }
 
@@ -155,17 +226,29 @@ impl<
     > ViewTuple for (V0, V1, V2, V3, V4, V5, V6, V7, V8, V9)
 {
     const LEN: usize = 10;
-    fn render_each(&self, frame: &mut Frame, mut rect: impl FnMut(usize) -> Rect) {
-        self.0.render_static(frame, rect(0));
-        self.1.render_static(frame, rect(1));
-        self.2.render_static(frame, rect(2));
-        self.3.render_static(frame, rect(3));
-        self.4.render_static(frame, rect(4));
-        self.5.render_static(frame, rect(5));
-        self.6.render_static(frame, rect(6));
-        self.7.render_static(frame, rect(7));
-        self.8.render_static(frame, rect(8));
-        self.9.render_static(frame, rect(9));
+    fn render_each(&self, frame: &mut Frame, mut rect: impl FnMut(usize, Option<Size>) -> Rect) {
+        self.0.render(frame, rect(0, self.0.preferred_size()));
+        self.1.render(frame, rect(1, self.1.preferred_size()));
+        self.2.render(frame, rect(2, self.2.preferred_size()));
+        self.3.render(frame, rect(3, self.3.preferred_size()));
+        self.4.render(frame, rect(4, self.4.preferred_size()));
+        self.5.render(frame, rect(5, self.5.preferred_size()));
+        self.6.render(frame, rect(6, self.6.preferred_size()));
+        self.7.render(frame, rect(7, self.7.preferred_size()));
+        self.8.render(frame, rect(8, self.8.preferred_size()));
+        self.9.render(frame, rect(9, self.9.preferred_size()));
+    }
+    fn for_each_preferred_size(&self, mut f: impl FnMut(Option<Size>)) {
+        f(self.0.preferred_size());
+        f(self.1.preferred_size());
+        f(self.1.preferred_size());
+        f(self.2.preferred_size());
+        f(self.3.preferred_size());
+        f(self.4.preferred_size());
+        f(self.5.preferred_size());
+        f(self.6.preferred_size());
+        f(self.7.preferred_size());
+        f(self.8.preferred_size());
     }
 }
 
@@ -184,18 +267,31 @@ impl<
     > ViewTuple for (V0, V1, V2, V3, V4, V5, V6, V7, V8, V9, V10)
 {
     const LEN: usize = 11;
-    fn render_each(&self, frame: &mut Frame, mut rect: impl FnMut(usize) -> Rect) {
-        self.0.render_static(frame, rect(0));
-        self.1.render_static(frame, rect(1));
-        self.2.render_static(frame, rect(2));
-        self.3.render_static(frame, rect(3));
-        self.4.render_static(frame, rect(4));
-        self.5.render_static(frame, rect(5));
-        self.6.render_static(frame, rect(6));
-        self.7.render_static(frame, rect(7));
-        self.8.render_static(frame, rect(8));
-        self.9.render_static(frame, rect(9));
-        self.10.render_static(frame, rect(10));
+    fn render_each(&self, frame: &mut Frame, mut rect: impl FnMut(usize, Option<Size>) -> Rect) {
+        self.0.render(frame, rect(0, self.0.preferred_size()));
+        self.1.render(frame, rect(1, self.1.preferred_size()));
+        self.2.render(frame, rect(2, self.2.preferred_size()));
+        self.3.render(frame, rect(3, self.3.preferred_size()));
+        self.4.render(frame, rect(4, self.4.preferred_size()));
+        self.5.render(frame, rect(5, self.5.preferred_size()));
+        self.6.render(frame, rect(6, self.6.preferred_size()));
+        self.7.render(frame, rect(7, self.7.preferred_size()));
+        self.8.render(frame, rect(8, self.8.preferred_size()));
+        self.9.render(frame, rect(9, self.9.preferred_size()));
+        self.10.render(frame, rect(10, self.10.preferred_size()));
+    }
+    fn for_each_preferred_size(&self, mut f: impl FnMut(Option<Size>)) {
+        f(self.0.preferred_size());
+        f(self.1.preferred_size());
+        f(self.1.preferred_size());
+        f(self.2.preferred_size());
+        f(self.3.preferred_size());
+        f(self.4.preferred_size());
+        f(self.5.preferred_size());
+        f(self.6.preferred_size());
+        f(self.7.preferred_size());
+        f(self.8.preferred_size());
+        f(self.9.preferred_size());
     }
 }
 
@@ -215,18 +311,32 @@ impl<
     > ViewTuple for (V0, V1, V2, V3, V4, V5, V6, V7, V8, V9, V10, V11)
 {
     const LEN: usize = 12;
-    fn render_each(&self, frame: &mut Frame, mut rect: impl FnMut(usize) -> Rect) {
-        self.0.render_static(frame, rect(0));
-        self.1.render_static(frame, rect(1));
-        self.2.render_static(frame, rect(2));
-        self.3.render_static(frame, rect(3));
-        self.4.render_static(frame, rect(4));
-        self.5.render_static(frame, rect(5));
-        self.6.render_static(frame, rect(6));
-        self.7.render_static(frame, rect(7));
-        self.8.render_static(frame, rect(8));
-        self.9.render_static(frame, rect(9));
-        self.10.render_static(frame, rect(10));
-        self.11.render_static(frame, rect(11));
+    fn render_each(&self, frame: &mut Frame, mut rect: impl FnMut(usize, Option<Size>) -> Rect) {
+        self.0.render(frame, rect(0, self.0.preferred_size()));
+        self.1.render(frame, rect(1, self.1.preferred_size()));
+        self.2.render(frame, rect(2, self.2.preferred_size()));
+        self.3.render(frame, rect(3, self.3.preferred_size()));
+        self.4.render(frame, rect(4, self.4.preferred_size()));
+        self.5.render(frame, rect(5, self.5.preferred_size()));
+        self.6.render(frame, rect(6, self.6.preferred_size()));
+        self.7.render(frame, rect(7, self.7.preferred_size()));
+        self.8.render(frame, rect(8, self.8.preferred_size()));
+        self.9.render(frame, rect(9, self.9.preferred_size()));
+        self.10.render(frame, rect(10, self.10.preferred_size()));
+        self.11.render(frame, rect(11, self.11.preferred_size()));
+    }
+    fn for_each_preferred_size(&self, mut f: impl FnMut(Option<Size>)) {
+        f(self.0.preferred_size());
+        f(self.1.preferred_size());
+        f(self.1.preferred_size());
+        f(self.2.preferred_size());
+        f(self.3.preferred_size());
+        f(self.4.preferred_size());
+        f(self.5.preferred_size());
+        f(self.6.preferred_size());
+        f(self.7.preferred_size());
+        f(self.8.preferred_size());
+        f(self.9.preferred_size());
+        f(self.10.preferred_size());
     }
 }

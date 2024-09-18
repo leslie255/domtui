@@ -43,7 +43,7 @@ pub fn default_event_loop<V: View, B: Backend>(
         }
         match event::read().unwrap() {
             Event::Key(KeyEvent {
-                code: KeyCode::Char('c' | 'q'),
+                code: KeyCode::Char('q'),
                 modifiers: KeyModifiers::CONTROL,
                 kind: KeyEventKind::Press,
                 state: _,

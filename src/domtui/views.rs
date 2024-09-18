@@ -86,7 +86,7 @@ impl<'a, V: View + 'a> Screen<'a, V> {
         terminal.autoresize()?;
         let mut frame = terminal.get_frame();
         let area = frame.area();
-        self.root_view.render_static(&mut frame, area);
+        self.root_view.render(&mut frame, area);
         terminal.hide_cursor()?;
         terminal.flush()?;
         terminal.swap_buffers();
@@ -252,15 +252,19 @@ impl<'a, V: View + 'a> Screen<'a, V> {
     }
 }
 
+#[derive(Clone, Copy, Default, PartialEq, Eq, PartialOrd, Ord, Hash)]
+pub struct Size {
+    pub width: u16,
+    pub height: u16,
+}
+
 /// A `View` is an immtuable view.
 /// For mutable views, use `MutView` and wrap it in a `ViewCell`.
 pub trait View {
-    fn render_static(&self, frame: &mut Frame, area: Rect);
-}
+    fn render(&self, frame: &mut Frame, area: Rect);
 
-impl<V: View> MutView for V {
-    fn render(&self, frame: &mut Frame, area: Rect, _is_focused: bool) {
-        self.render_static(frame, area)
+    fn preferred_size(&self) -> Option<Size> {
+        None
     }
 }
 
@@ -269,6 +273,10 @@ impl<V: View> MutView for V {
 #[allow(unused_variables)]
 pub trait MutView {
     fn render(&self, frame: &mut Frame, area: Rect, is_focused: bool);
+
+    fn preferred_size(&self) -> Option<Size> {
+        None
+    }
 
     fn is_focusable(&self) -> bool {
         false
@@ -329,9 +337,13 @@ impl<'a> ViewCell<'a> {
 }
 
 impl View for ViewCell<'_> {
-    fn render_static(&self, frame: &mut Frame, area: Rect) {
+    fn render(&self, frame: &mut Frame, area: Rect) {
         let inner = self.inner.borrow();
         inner.view.render(frame, area, inner.is_focused);
+    }
+
+    fn preferred_size(&self) -> Option<Size> {
+        self.inner.borrow().view.preferred_size()
     }
 }
 
@@ -369,7 +381,7 @@ impl<'a> ViewCellWeakRef<'a> {
 pub struct Empty;
 
 impl View for Empty {
-    fn render_static(&self, _frame: &mut Frame, _area: Rect) {}
+    fn render(&self, _frame: &mut Frame, _area: Rect) {}
 }
 
 /// An immutable view that displays some text.
@@ -426,7 +438,7 @@ impl<'a> Paragraph<'a> {
 }
 
 impl<'a> View for Paragraph<'a> {
-    fn render_static(&self, frame: &mut Frame, area: Rect) {
+    fn render(&self, frame: &mut Frame, area: Rect) {
         frame.render_widget(&self.widget, area);
     }
 }
@@ -439,29 +451,32 @@ pub struct Stack<Vs: ViewTuple> {
 }
 
 impl<Vs: ViewTuple> Stack<Vs> {
-    pub fn new(children: Vs, layout: Layout) -> Self {
+    pub fn with_layout(layout: Layout, children: Vs) -> Self {
         Self { children, layout }
     }
 
-    pub fn equal_split(direction: Direction, children: Vs) -> Self {
+    /// Automatically derive layout, given a direction.
+    /// For views with `preferred_size`, `preferred_size` is used.
+    /// Views without `preferred_size`s are equally split.
+    pub fn with_direction(direction: Direction, children: Vs) -> Self {
         let constraints = vec![Constraint::Ratio(1, Vs::LEN as u32); Vs::LEN];
         let layout = Layout::new(direction, constraints);
-        Self::new(children, layout)
+        Self::with_layout(layout, children)
     }
 
     pub fn horizontal(children: Vs) -> Self {
-        Self::equal_split(Direction::Horizontal, children)
+        Self::with_direction(Direction::Horizontal, children)
     }
 
     pub fn vertical(children: Vs) -> Self {
-        Self::equal_split(Direction::Vertical, children)
+        Self::with_direction(Direction::Vertical, children)
     }
 }
 
 impl<Vs: ViewTuple> View for Stack<Vs> {
-    fn render_static(&self, frame: &mut Frame, area: Rect) {
+    fn render(&self, frame: &mut Frame, area: Rect) {
         let chunks = self.layout.split(area);
-        self.children.render_each(frame, |i| chunks[i])
+        self.children.render_each(frame, |i, _| chunks[i])
     }
 }
 
@@ -620,7 +635,7 @@ impl<'a> MutView for InputField<'a> {
             .render_paragraph(is_focused)
             .block(block)
             .wrap(Wrap { trim: false });
-        paragraph.render_static(frame, area);
+        paragraph.render(frame, area);
     }
 
     fn is_focusable(&self) -> bool {
