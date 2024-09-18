@@ -252,10 +252,22 @@ impl<'a, V: View + 'a> Screen<'a, V> {
     }
 }
 
-#[derive(Clone, Copy, Default, PartialEq, Eq, PartialOrd, Ord, Hash)]
+#[derive(Debug, Clone, Copy, Default, PartialEq, Eq, PartialOrd, Ord, Hash)]
 pub struct Size {
     pub width: u16,
     pub height: u16,
+}
+
+impl Size {
+    pub const fn new(width: u16, height: u16) -> Self {
+        Self { width, height }
+    }
+}
+
+impl From<(u16, u16)> for Size {
+    fn from((width, height): (u16, u16)) -> Self {
+        Self::new(width, height)
+    }
 }
 
 /// A `View` is an immtuable view.
@@ -355,7 +367,7 @@ struct ViewCellInner<'a> {
 
 impl Debug for ViewCellInner<'_> {
     fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
-        f.debug_struct("DynamicViewWrapperInner")
+        f.debug_struct("ViewCellInner")
             .field("is_focused", &self.is_focused)
             .finish_non_exhaustive()
     }
@@ -383,6 +395,40 @@ pub struct Empty;
 impl View for Empty {
     fn render(&self, _frame: &mut Frame, _area: Rect) {}
 }
+
+/// Wraps an inner view and override's its size preference.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub struct SizedView<V: View> {
+    preferred_size: Size,
+    inner: V,
+}
+
+impl<V: View> View for SizedView<V> {
+    fn render(&self, frame: &mut Frame, area: Rect) {
+        self.inner.render(frame, area);
+    }
+
+    fn preferred_size(&self) -> Option<Size> {
+        Some(self.preferred_size)
+    }
+}
+
+impl<V: View> SizedView<V> {
+    pub const fn new(preferred_size: Size, inner: V) -> Self {
+        Self {
+            inner,
+            preferred_size,
+        }
+    }
+}
+
+pub trait ViewExt: View + Sized {
+    fn prefers_size(self, preferred_size: impl Into<Size>) -> SizedView<Self> {
+        SizedView::new(preferred_size.into(), self)
+    }
+}
+
+impl<V: View + Sized> ViewExt for V {}
 
 /// An immutable view that displays some text.
 #[derive(Debug, Clone, PartialEq, Eq, Hash)]
@@ -448,20 +494,34 @@ impl<'a> View for Paragraph<'a> {
 pub struct Stack<Vs: ViewTuple> {
     children: Vs,
     layout: Layout,
+    direction: Direction,
 }
 
 impl<Vs: ViewTuple> Stack<Vs> {
-    pub fn with_layout(layout: Layout, children: Vs) -> Self {
-        Self { children, layout }
+    fn with_layout(direction: Direction, constraints: Vec<Constraint>, children: Vs) -> Self {
+        Self {
+            children,
+            layout: Layout::new(direction, constraints),
+            direction,
+        }
     }
 
     /// Automatically derive layout, given a direction.
     /// For views with `preferred_size`, `preferred_size` is used.
     /// Views without `preferred_size`s are equally split.
     pub fn with_direction(direction: Direction, children: Vs) -> Self {
-        let constraints = vec![Constraint::Ratio(1, Vs::LEN as u32); Vs::LEN];
-        let layout = Layout::new(direction, constraints);
-        Self::with_layout(layout, children)
+        let mut constraints: Vec<Constraint> = Vec::with_capacity(Vs::LEN);
+        children.for_each_preferred_size(|preferred_size| match preferred_size {
+            Some(Size { width, height }) => {
+                let length = match direction {
+                    Direction::Horizontal => width,
+                    Direction::Vertical => height,
+                };
+                constraints.push(Constraint::Length(length));
+            }
+            None => constraints.push(Constraint::Fill(1)),
+        });
+        Self::with_layout(direction, constraints, children)
     }
 
     pub fn horizontal(children: Vs) -> Self {
@@ -476,7 +536,15 @@ impl<Vs: ViewTuple> Stack<Vs> {
 impl<Vs: ViewTuple> View for Stack<Vs> {
     fn render(&self, frame: &mut Frame, area: Rect) {
         let chunks = self.layout.split(area);
-        self.children.render_each(frame, |i, _| chunks[i])
+        self.children.render_each(frame, |i, preferred_size| {
+            let mut area = chunks[i];
+            match (self.direction, preferred_size) {
+                (Direction::Horizontal, Some(size)) => area.height = size.height,
+                (Direction::Vertical, Some(size)) => area.width = size.width,
+                _ => (),
+            };
+            area
+        })
     }
 }
 

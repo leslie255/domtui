@@ -2,7 +2,7 @@
 
 pub mod domtui;
 
-use domtui::views::{InputField, Paragraph, ScreenBuilder, Stack};
+use domtui::views::{InputField, Paragraph, ScreenBuilder, Stack, ViewExt};
 use ratatui::{
     style::{Color, Style},
     widgets::{Block, Borders},
@@ -20,7 +20,8 @@ fn main() {
     let root_view = Stack::horizontal((
         Paragraph::new("HELLO\n你好")
             .bg(Color::LightYellow)
-            .fg(Color::Black),
+            .fg(Color::Black)
+            .prefers_size((20, 20)),
         Paragraph::new("WORLD\n世界")
             .bg(Color::LightCyan)
             .fg(Color::Black),

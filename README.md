@@ -9,11 +9,6 @@
 <img width="872" alt="screenshot" src="https://github.com/user-attachments/assets/5aacb9a9-f824-4223-8ee7-4eced673bb90">
 
 ```rs
-use domtui;
-use domtui::views::{InputField, Paragraph, ScreenBuilder, Stack};
-
-use ratatui::style::{Color, Style},
-use ratatui::widgets::{Block, Borders};
 
 fn borders(fg: Color) -> Block<'static> {
     Block::new()
@@ -27,7 +22,8 @@ fn main() {
     let root_view = Stack::horizontal((
         Paragraph::new("HELLO\n你好")
             .bg(Color::LightYellow)
-            .fg(Color::Black),
+            .fg(Color::Black)
+            .prefers_size((20, 20)),
         Paragraph::new("WORLD\n世界")
             .bg(Color::LightCyan)
             .fg(Color::Black),
