@@ -20,13 +20,15 @@ fn main() {
     let mut builder = ScreenBuilder::new();
 
     let root_view = Stack::horizontal((
-        Paragraph::new("HELLO\n你好")
+        Paragraph::new("HELLO\n(This view has a preferred size of 16*16)")
             .bg(Color::LightYellow)
             .fg(Color::Black)
-            .prefers_size((20, 20)),
-        Paragraph::new("WORLD\n世界")
+            .wrap(Wrap::default())
+            .prefers_size((16, 16)),
+        Paragraph::new("WORLD\n(This view doesn't have a preferred size, it just spreads out equally with other views)")
             .bg(Color::LightCyan)
-            .fg(Color::Black),
+            .fg(Color::Black)
+            .wrap(Wrap::default()),
         Stack::vertical((
             builder.tagged_view_cell(
                 "input_field0",
@@ -44,7 +46,7 @@ fn main() {
                     .cursor_at_end()
                     .block_focused(borders(Color::LightYellow))
                     .block_unfocused(borders(Color::DarkGray)),
-            ),
+            ).prefers_size((0, 4)),
         )),
     ));
 

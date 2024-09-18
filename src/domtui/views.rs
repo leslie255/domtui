@@ -539,8 +539,10 @@ impl<Vs: ViewTuple> View for Stack<Vs> {
         self.children.render_each(frame, |i, preferred_size| {
             let mut area = chunks[i];
             match (self.direction, preferred_size) {
-                (Direction::Horizontal, Some(size)) => area.height = size.height,
-                (Direction::Vertical, Some(size)) => area.width = size.width,
+                (Direction::Horizontal, Some(size)) if size.height != 0 => {
+                    area.height = size.height
+                }
+                (Direction::Vertical, Some(size)) if size.width != 0 => area.width = size.width,
                 _ => (),
             };
             area
