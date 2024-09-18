@@ -28,17 +28,17 @@ use super::{
 
 /// `'a` for allowing to borrow from a data source.
 #[derive(Debug, Clone)]
-pub struct Screen<'a, V: StaticView + 'a> {
+pub struct Screen<'a, V: View + 'a> {
     root_view: V,
-    dynamic_sites: Vec<DynamicViewWrapperWeakRef<'a>>,
-    dynamic_site_tags: HashMap<Cow<'a, str>, DynamicViewWrapperWeakRef<'a>>,
+    dynamic_sites: Vec<ViewCellWeakRef<'a>>,
+    dynamic_site_tags: HashMap<Cow<'a, str>, ViewCellWeakRef<'a>>,
 }
 
 /// `'a` for allowing to borrow from a data source.
 #[derive(Debug, Clone, Default)]
 pub struct ScreenBuilder<'a> {
-    dynamic_sites: Vec<DynamicViewWrapperWeakRef<'a>>,
-    dynamic_site_tags: HashMap<Cow<'a, str>, DynamicViewWrapperWeakRef<'a>>,
+    dynamic_sites: Vec<ViewCellWeakRef<'a>>,
+    dynamic_site_tags: HashMap<Cow<'a, str>, ViewCellWeakRef<'a>>,
 }
 
 impl<'a> ScreenBuilder<'a> {
@@ -46,7 +46,7 @@ impl<'a> ScreenBuilder<'a> {
         Self::default()
     }
 
-    pub fn finish<V: StaticView>(self, root_view: V) -> Screen<'a, V> {
+    pub fn finish<V: View>(self, root_view: V) -> Screen<'a, V> {
         Screen {
             root_view,
             dynamic_sites: self.dynamic_sites,
@@ -54,28 +54,30 @@ impl<'a> ScreenBuilder<'a> {
         }
     }
 
-    /// Wrap a `View` into a `DynamicViewWrapper`.
-    pub fn dynamic_site(&mut self, view: impl View + 'a) -> DynamicViewWrapper<'a> {
-        let view = DynamicViewWrapper::new(false, view);
+    /// Wrap a `MutView` into a `ViewCell`, which implements non-mut `View`.
+    pub fn view_cell(&mut self, view: impl MutView + 'a) -> ViewCell<'a> {
+        let view = ViewCell::new(false, view);
         self.dynamic_sites.push(view.downgrade());
         view
     }
 
-    /// Wrap a `View` into a `DynamicViewWrapper`.
-    pub fn tagged_dynamic_site(
+    /// Wrap a `MutView` into a `ViewCell`, which implements non-mut `View`, and tag it.
+    pub fn tagged_view_cell(
         &mut self,
         tag: impl Into<Cow<'a, str>>,
-        view: impl View + 'a,
-    ) -> DynamicViewWrapper<'a> {
-        let view = DynamicViewWrapper::new(false, view);
+        view: impl MutView + 'a,
+    ) -> ViewCell<'a> {
+        let view = ViewCell::new(false, view);
         self.dynamic_site_tags.insert(tag.into(), view.downgrade());
         self.dynamic_sites.push(view.downgrade());
         view
     }
 }
 
-impl<'a, V: StaticView + 'a> Screen<'a, V> {
-    /// Create a screen with no dynamic views.
+impl<'a, V: View + 'a> Screen<'a, V> {
+    /// Create a screen with just non-mut views.
+    /// For creating a screen with mutable views, use `ScreenBuilder` and
+    /// `ScreenBuilder::view_cell`, `ScreenBuilder::tagged_view_cell`.
     pub fn new(root_view: V) -> Self {
         ScreenBuilder::default().finish(root_view)
     }
@@ -92,19 +94,31 @@ impl<'a, V: StaticView + 'a> Screen<'a, V> {
         Ok(())
     }
 
-    /// This has the same effect as calling `ScreenBuilder::dynamic_site` before the screen was
-    /// built.
-    pub fn dynamic_site(&mut self, view: impl View + 'a) -> DynamicViewWrapper<'a> {
-        let dynamic_site = DynamicViewWrapper::new(false, view);
+    /// Wrap a `MutView` into a `ViewCell`, which implements non-mut `View`.
+    /// This function is for mutating views in a screen after it was built, for creating a
+    /// `ViewCell` during building of the screen, use `ScreenBuilder`.
+    pub fn view_cell(&mut self, view: impl MutView + 'a) -> ViewCell<'a> {
+        let dynamic_site = ViewCell::new(false, view);
+        self.dynamic_sites.push(dynamic_site.downgrade());
+        dynamic_site
+    }
+
+    /// Wrap a `MutView` into a `ViewCell`, which implements non-mut `View`, and tag it.
+    /// This function is for mutating views in a screen after it was built, for creating a
+    /// `ViewCell` during building of the screen, use `ScreenBuilder`.
+    pub fn tagged_view_cell(&mut self, view: impl MutView + 'a) -> ViewCell<'a> {
+        let dynamic_site = ViewCell::new(false, view);
         self.dynamic_sites.push(dynamic_site.downgrade());
         dynamic_site
     }
 
     /// If multiple views were tagged the same, only one of them is inspected, randomly.
+    /// Returns `None` if no view of such tag exists.
+    /// If more than one view of such tag exist, one of the views would be provided at random.
     ///
     /// # Safety
     /// `V` must be of the correct type that the value was initialized with.
-    pub unsafe fn inspect_view_with_tag_unchecked<T, V2: View + 'a>(
+    pub unsafe fn inspect_view_with_tag_unchecked<T, V2: MutView + 'a>(
         &self,
         tag: &str,
         f: impl FnOnce(&mut V2) -> T,
@@ -117,7 +131,7 @@ impl<'a, V: StaticView + 'a> Screen<'a, V> {
     /// A focusable view is an `View` with its `is_focusable` returning `true`.
     pub fn focus_next(&mut self) {
         // Unfocus the currnet one.
-        // FIXME: make this more efficient by keeping track the of index of the focused view.
+        // FIXME: optimize this by keeping track the of index of the focused view.
         if self.dynamic_sites.is_empty() {
             return;
         }
@@ -159,7 +173,7 @@ impl<'a, V: StaticView + 'a> Screen<'a, V> {
     /// A focusable view is an `View` with its `is_focusable` returning `true`.
     pub fn focus_prev(&mut self) {
         // Unfocus the currnet one.
-        // FIXME: make this more efficient by keeping track the of index of the focused view.
+        // FIXME: optimize this by keeping track the of index of the focused view.
         if self.dynamic_sites.is_empty() {
             return;
         }
@@ -198,10 +212,10 @@ impl<'a, V: StaticView + 'a> Screen<'a, V> {
         }
     }
 
-    /// Returns the view currently in focus in the form of a `DynamicViewWrapper`.
+    /// Returns the view currently in focus in the form of a `ViewCell`.
     /// Returns `None` if no view is in focus (including the situation where a view was focused but
     /// was since deleted).
-    pub fn focused<'b>(&'b self) -> Option<DynamicViewWrapper<'a>> {
+    pub fn focused<'b>(&'b self) -> Option<ViewCell<'a>> {
         let iv_weak = self
             .dynamic_sites
             .iter()
@@ -209,6 +223,7 @@ impl<'a, V: StaticView + 'a> Screen<'a, V> {
         iv_weak.upgrade()
     }
 
+    /// Pass an event into the screen.
     pub fn handle_event(&mut self, event: Event) {
         match event {
             Event::Key(KeyEvent {
@@ -237,22 +252,22 @@ impl<'a, V: StaticView + 'a> Screen<'a, V> {
     }
 }
 
-/// `StaticView`s are a subset of `View`s that are immutable.
-/// A dynamic `View` can be wrapped into a `StaticView` through `DynamicViewWrapper`, which can
-/// only be created by `ScreenBuilder::dynamic_site` or `Screen::dynamic_site`.
-pub trait StaticView {
+/// A `View` is an immtuable view.
+/// For mutable views, use `MutView` and wrap it in a `ViewCell`.
+pub trait View {
     fn render_static(&self, frame: &mut Frame, area: Rect);
 }
 
-/// All static views are dynamic views.
-impl<V: StaticView> View for V {
+impl<V: View> MutView for V {
     fn render(&self, frame: &mut Frame, area: Rect, _is_focused: bool) {
         self.render_static(frame, area)
     }
 }
 
+/// A mutable view.
+/// To be able to render a mutable view, wrap it in a `ViewCell`.
 #[allow(unused_variables)]
-pub trait View {
+pub trait MutView {
     fn render(&self, frame: &mut Frame, area: Rect, is_focused: bool);
 
     fn is_focusable(&self) -> bool {
@@ -266,16 +281,18 @@ pub trait View {
     fn on_key_event(&mut self, key_event: KeyEvent) {}
 }
 
-/// Wrap a dynamic view into a static view through internal mutability.
+/// Wrap a `MutView` into a `View` through internal mutability.
 /// Also erases its type.
+/// Can be created by calling `view_cell` on `Screen` or `ScreenBuilder`.
 #[derive(Debug, Clone, From)]
-pub struct DynamicViewWrapper<'a> {
-    inner: Rc<RefCell<DynamicViewWrapperInner<'a>>>,
+pub struct ViewCell<'a> {
+    inner: Rc<RefCell<ViewCellInner<'a>>>,
 }
 
-impl<'a> DynamicViewWrapper<'a> {
-    fn new(is_focused: bool, view: impl View + 'a) -> Self {
-        let inner = DynamicViewWrapperInner {
+impl<'a> ViewCell<'a> {
+    /// Internal function for creating a new `ViewCell`.
+    fn new(is_focused: bool, view: impl MutView + 'a) -> Self {
+        let inner = ViewCellInner {
             is_focused,
             view: Box::new(view),
         };
@@ -284,44 +301,47 @@ impl<'a> DynamicViewWrapper<'a> {
         }
     }
 
-    /// Downgrade to a `Weak` reference.
-    fn downgrade(&self) -> DynamicViewWrapperWeakRef<'a> {
+    /// Downgrade to a weak reference.
+    fn downgrade(&self) -> ViewCellWeakRef<'a> {
         Rc::downgrade(&self.inner).into()
     }
 
-    /// Try to downcast the wrapped `View` into a value of `V: View` and do something to it.
+    /// Downcast the wrapped `MutView` into a value of concrete type.
+    /// Because `ViewCell` erases the type of the wrapped view, such downcasting is `unsafe`.
+    ///
+    /// FIXME: make it safe.
     ///
     /// # Safety
     /// `V` must be of the correct type that the value was initialized with.
-    pub unsafe fn inspect<T, V: View + 'a>(&self, f: impl FnOnce(&mut V) -> T) -> T {
+    pub unsafe fn inspect<T, MV: MutView + 'a>(&self, f: impl FnOnce(&mut MV) -> T) -> T {
         trait RawPtr {
             fn raw_ptr(&mut self) -> *mut ();
         }
-        impl<V: View + ?Sized> RawPtr for V {
+        impl<V: MutView + ?Sized> RawPtr for V {
             fn raw_ptr(&mut self) -> *mut () {
                 self as *mut V as *mut ()
             }
         }
         let mut borrow_mut = self.inner.borrow_mut();
-        let view: &mut V = unsafe { &mut *(borrow_mut.view.as_mut().raw_ptr() as *mut _) };
+        let view: &mut MV = unsafe { &mut *(borrow_mut.view.as_mut().raw_ptr() as *mut _) };
         f(view)
     }
 }
 
-impl StaticView for DynamicViewWrapper<'_> {
+impl View for ViewCell<'_> {
     fn render_static(&self, frame: &mut Frame, area: Rect) {
         let inner = self.inner.borrow();
         inner.view.render(frame, area, inner.is_focused);
     }
 }
 
-struct DynamicViewWrapperInner<'a> {
+struct ViewCellInner<'a> {
     is_focused: bool,
     /// FIXME: Remove this `Box` for one less indirection.
-    view: Box<dyn View + 'a>,
+    view: Box<dyn MutView + 'a>,
 }
 
-impl Debug for DynamicViewWrapperInner<'_> {
+impl Debug for ViewCellInner<'_> {
     fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
         f.debug_struct("DynamicViewWrapperInner")
             .field("is_focused", &self.is_focused)
@@ -329,27 +349,30 @@ impl Debug for DynamicViewWrapperInner<'_> {
     }
 }
 
-/// FIXME: Maybe expose this in the future as API.
+/// A weak reference to a `MutView`.
+/// FIXME: Maybe expose this in the future as an API.
 #[derive(Debug, Clone, Default, From)]
-struct DynamicViewWrapperWeakRef<'a> {
-    weak: Weak<RefCell<DynamicViewWrapperInner<'a>>>,
+struct ViewCellWeakRef<'a> {
+    weak: Weak<RefCell<ViewCellInner<'a>>>,
 }
 
-impl<'a> DynamicViewWrapperWeakRef<'a> {
+impl<'a> ViewCellWeakRef<'a> {
     /// Like `Weak::upgrade`, it may fail when either the original `Rc` is dropped or the `Weak` is
     /// null.
-    fn upgrade(&self) -> Option<DynamicViewWrapper<'a>> {
+    fn upgrade(&self) -> Option<ViewCell<'a>> {
         self.weak.upgrade().map(Into::into)
     }
 }
 
+/// An empty view.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord, Hash)]
 pub struct Empty;
 
-impl StaticView for Empty {
+impl View for Empty {
     fn render_static(&self, _frame: &mut Frame, _area: Rect) {}
 }
 
+/// An immutable view that displays some text.
 #[derive(Debug, Clone, PartialEq, Eq, Hash)]
 pub struct Paragraph<'a> {
     widget: widgets::Paragraph<'a>,
@@ -402,45 +425,47 @@ impl<'a> Paragraph<'a> {
     }
 }
 
-impl<'a> StaticView for Paragraph<'a> {
+impl<'a> View for Paragraph<'a> {
     fn render_static(&self, frame: &mut Frame, area: Rect) {
         frame.render_widget(&self.widget, area);
     }
 }
 
+/// A stack of views that is either horizontal or vertical.
 #[derive(Debug, Clone, PartialEq, Eq, Hash)]
-pub struct Stack<Ts: ViewTuple> {
-    children: Ts,
+pub struct Stack<Vs: ViewTuple> {
+    children: Vs,
     layout: Layout,
 }
 
-impl<Children: ViewTuple> Stack<Children> {
-    pub fn new(children: Children, layout: Layout) -> Self {
+impl<Vs: ViewTuple> Stack<Vs> {
+    pub fn new(children: Vs, layout: Layout) -> Self {
         Self { children, layout }
     }
 
-    pub fn equal_split(direction: Direction, children: Children) -> Self {
-        let constraints = vec![Constraint::Ratio(1, Children::LEN as u32); Children::LEN];
+    pub fn equal_split(direction: Direction, children: Vs) -> Self {
+        let constraints = vec![Constraint::Ratio(1, Vs::LEN as u32); Vs::LEN];
         let layout = Layout::new(direction, constraints);
         Self::new(children, layout)
     }
 
-    pub fn horizontal(children: Children) -> Self {
+    pub fn horizontal(children: Vs) -> Self {
         Self::equal_split(Direction::Horizontal, children)
     }
 
-    pub fn vertical(children: Children) -> Self {
+    pub fn vertical(children: Vs) -> Self {
         Self::equal_split(Direction::Vertical, children)
     }
 }
 
-impl<Children: ViewTuple> StaticView for Stack<Children> {
+impl<Vs: ViewTuple> View for Stack<Vs> {
     fn render_static(&self, frame: &mut Frame, area: Rect) {
         let chunks = self.layout.split(area);
         self.children.render_each(frame, |i| chunks[i])
     }
 }
 
+/// FIXME: make it multi-line.
 #[derive(Debug, Clone, Hash)]
 pub struct InputField<'a> {
     placeholder: Cow<'a, str>,
@@ -543,8 +568,7 @@ impl<'a> InputField<'a> {
                         Span::styled(" ", self.caret_style()),
                     ]));
                 }
-                let mut caret_next = caret;
-                input_field::index_next(text, &mut caret_next);
+                let caret_next = input_field::next_index_in_str(text, caret);
                 Paragraph::new(Line::from(vec![
                     Span::styled(&text[0..caret], self.style_focused),
                     Span::styled(&text[caret..caret_next], self.caret_style()),
@@ -585,7 +609,7 @@ impl<'a> InputField<'a> {
     }
 }
 
-impl<'a> View for InputField<'a> {
+impl<'a> MutView for InputField<'a> {
     fn render(&self, frame: &mut Frame, area: Rect, is_focused: bool) {
         let block = if is_focused {
             self.block_focused.clone()

@@ -22,7 +22,7 @@ impl ViewTuple for Infallible {
     fn render_each(&self, _frame: &mut Frame, _rect: impl FnMut(usize) -> Rect) {}
 }
 
-impl<V: StaticView> ViewTuple for V {
+impl<V: View> ViewTuple for V {
     const LEN: usize = 1;
     fn render_each(&self, frame: &mut Frame, mut rect: impl FnMut(usize) -> Rect) {
         self.render_static(frame, rect(0));
@@ -34,14 +34,14 @@ impl ViewTuple for () {
     fn render_each(&self, _frame: &mut Frame, _rect: impl FnMut(usize) -> Rect) {}
 }
 
-impl<V: StaticView> ViewTuple for (V,) {
+impl<V: View> ViewTuple for (V,) {
     const LEN: usize = 1;
     fn render_each(&self, frame: &mut Frame, mut rect: impl FnMut(usize) -> Rect) {
         self.0.render_static(frame, rect(0));
     }
 }
 
-impl<V0: StaticView, V1: StaticView> ViewTuple for (V0, V1) {
+impl<V0: View, V1: View> ViewTuple for (V0, V1) {
     const LEN: usize = 2;
     fn render_each(&self, frame: &mut Frame, mut rect: impl FnMut(usize) -> Rect) {
         self.0.render_static(frame, rect(0));
@@ -49,7 +49,7 @@ impl<V0: StaticView, V1: StaticView> ViewTuple for (V0, V1) {
     }
 }
 
-impl<V0: StaticView, V1: StaticView, V2: StaticView> ViewTuple for (V0, V1, V2) {
+impl<V0: View, V1: View, V2: View> ViewTuple for (V0, V1, V2) {
     const LEN: usize = 3;
     fn render_each(&self, frame: &mut Frame, mut rect: impl FnMut(usize) -> Rect) {
         self.0.render_static(frame, rect(0));
@@ -58,7 +58,7 @@ impl<V0: StaticView, V1: StaticView, V2: StaticView> ViewTuple for (V0, V1, V2) 
     }
 }
 
-impl<V0: StaticView, V1: StaticView, V2: StaticView, V3: StaticView> ViewTuple for (V0, V1, V2, V3) {
+impl<V0: View, V1: View, V2: View, V3: View> ViewTuple for (V0, V1, V2, V3) {
     const LEN: usize = 4;
     fn render_each(&self, frame: &mut Frame, mut rect: impl FnMut(usize) -> Rect) {
         self.0.render_static(frame, rect(0));
@@ -68,7 +68,7 @@ impl<V0: StaticView, V1: StaticView, V2: StaticView, V3: StaticView> ViewTuple f
     }
 }
 
-impl<V0: StaticView, V1: StaticView, V2: StaticView, V3: StaticView, V4: StaticView> ViewTuple for (V0, V1, V2, V3, V4) {
+impl<V0: View, V1: View, V2: View, V3: View, V4: View> ViewTuple for (V0, V1, V2, V3, V4) {
     const LEN: usize = 5;
     fn render_each(&self, frame: &mut Frame, mut rect: impl FnMut(usize) -> Rect) {
         self.0.render_static(frame, rect(0));
@@ -79,7 +79,7 @@ impl<V0: StaticView, V1: StaticView, V2: StaticView, V3: StaticView, V4: StaticV
     }
 }
 
-impl<V0: StaticView, V1: StaticView, V2: StaticView, V3: StaticView, V4: StaticView, V5: StaticView> ViewTuple
+impl<V0: View, V1: View, V2: View, V3: View, V4: View, V5: View> ViewTuple
     for (V0, V1, V2, V3, V4, V5)
 {
     const LEN: usize = 6;
@@ -93,7 +93,7 @@ impl<V0: StaticView, V1: StaticView, V2: StaticView, V3: StaticView, V4: StaticV
     }
 }
 
-impl<V0: StaticView, V1: StaticView, V2: StaticView, V3: StaticView, V4: StaticView, V5: StaticView, V6: StaticView> ViewTuple
+impl<V0: View, V1: View, V2: View, V3: View, V4: View, V5: View, V6: View> ViewTuple
     for (V0, V1, V2, V3, V4, V5, V6)
 {
     const LEN: usize = 7;
@@ -108,7 +108,7 @@ impl<V0: StaticView, V1: StaticView, V2: StaticView, V3: StaticView, V4: StaticV
     }
 }
 
-impl<V0: StaticView, V1: StaticView, V2: StaticView, V3: StaticView, V4: StaticView, V5: StaticView, V6: StaticView, V7: StaticView> ViewTuple
+impl<V0: View, V1: View, V2: View, V3: View, V4: View, V5: View, V6: View, V7: View> ViewTuple
     for (V0, V1, V2, V3, V4, V5, V6, V7)
 {
     const LEN: usize = 8;
@@ -124,7 +124,7 @@ impl<V0: StaticView, V1: StaticView, V2: StaticView, V3: StaticView, V4: StaticV
     }
 }
 
-impl<V0: StaticView, V1: StaticView, V2: StaticView, V3: StaticView, V4: StaticView, V5: StaticView, V6: StaticView, V7: StaticView, V8: StaticView>
+impl<V0: View, V1: View, V2: View, V3: View, V4: View, V5: View, V6: View, V7: View, V8: View>
     ViewTuple for (V0, V1, V2, V3, V4, V5, V6, V7, V8)
 {
     const LEN: usize = 9;
@@ -142,16 +142,16 @@ impl<V0: StaticView, V1: StaticView, V2: StaticView, V3: StaticView, V4: StaticV
 }
 
 impl<
-        V0: StaticView,
-        V1: StaticView,
-        V2: StaticView,
-        V3: StaticView,
-        V4: StaticView,
-        V5: StaticView,
-        V6: StaticView,
-        V7: StaticView,
-        V8: StaticView,
-        V9: StaticView,
+        V0: View,
+        V1: View,
+        V2: View,
+        V3: View,
+        V4: View,
+        V5: View,
+        V6: View,
+        V7: View,
+        V8: View,
+        V9: View,
     > ViewTuple for (V0, V1, V2, V3, V4, V5, V6, V7, V8, V9)
 {
     const LEN: usize = 10;
@@ -170,17 +170,17 @@ impl<
 }
 
 impl<
-        V0: StaticView,
-        V1: StaticView,
-        V2: StaticView,
-        V3: StaticView,
-        V4: StaticView,
-        V5: StaticView,
-        V6: StaticView,
-        V7: StaticView,
-        V8: StaticView,
-        V9: StaticView,
-        V10: StaticView,
+        V0: View,
+        V1: View,
+        V2: View,
+        V3: View,
+        V4: View,
+        V5: View,
+        V6: View,
+        V7: View,
+        V8: View,
+        V9: View,
+        V10: View,
     > ViewTuple for (V0, V1, V2, V3, V4, V5, V6, V7, V8, V9, V10)
 {
     const LEN: usize = 11;
@@ -200,18 +200,18 @@ impl<
 }
 
 impl<
-        V0: StaticView,
-        V1: StaticView,
-        V2: StaticView,
-        V3: StaticView,
-        V4: StaticView,
-        V5: StaticView,
-        V6: StaticView,
-        V7: StaticView,
-        V8: StaticView,
-        V9: StaticView,
-        V10: StaticView,
-        V11: StaticView,
+        V0: View,
+        V1: View,
+        V2: View,
+        V3: View,
+        V4: View,
+        V5: View,
+        V6: View,
+        V7: View,
+        V8: View,
+        V9: View,
+        V10: View,
+        V11: View,
     > ViewTuple for (V0, V1, V2, V3, V4, V5, V6, V7, V8, V9, V10, V11)
 {
     const LEN: usize = 12;

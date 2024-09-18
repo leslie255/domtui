@@ -25,7 +25,7 @@ fn main() {
             .bg(Color::LightCyan)
             .fg(Color::Black),
         Stack::vertical((
-            builder.tagged_dynamic_site(
+            builder.tagged_view_cell(
                 "input_field0",
                 InputField::default()
                     .placeholder("Type something here...")
@@ -33,7 +33,7 @@ fn main() {
                     .block_focused(borders(Color::LightYellow))
                     .block_unfocused(borders(Color::DarkGray)),
             ),
-            builder.tagged_dynamic_site(
+            builder.tagged_view_cell(
                 "input_field1",
                 InputField::default()
                     .placeholder("Type something here...")

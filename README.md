@@ -9,13 +9,17 @@
 <img width="872" alt="screenshot" src="https://github.com/user-attachments/assets/5aacb9a9-f824-4223-8ee7-4eced673bb90">
 
 ```rs
-use std::borrow::Cow;
-
+use domtui;
 use domtui::views::{InputField, Paragraph, ScreenBuilder, Stack};
-use ratatui::{
-    style::{Color, Style},
-    widgets::{Block, Borders},
-};
+
+use ratatui::style::{Color, Style},
+use ratatui::widgets::{Block, Borders};
+
+fn borders(fg: Color) -> Block<'static> {
+    Block::new()
+        .borders(Borders::ALL)
+        .style(Style::new().fg(fg))
+}
 
 fn main() {
     let mut builder = ScreenBuilder::new();
@@ -28,14 +32,16 @@ fn main() {
             .bg(Color::LightCyan)
             .fg(Color::Black),
         Stack::vertical((
-            builder.dynamic_site(
+            builder.tagged_view_cell(
+                "input_field0",
                 InputField::default()
                     .placeholder("Type something here...")
                     .text("")
                     .block_focused(borders(Color::LightYellow))
                     .block_unfocused(borders(Color::DarkGray)),
             ),
-            builder.dynamic_site(
+            builder.tagged_view_cell(
+                "input_field1",
                 InputField::default()
                     .placeholder("Type something here...")
                     .text("UTF-8 文本编辑!")
@@ -51,12 +57,6 @@ fn main() {
     let mut terminal = domtui::setup_terminal();
     domtui::default_event_loop(&mut terminal, &mut screen).unwrap();
     domtui::restore_terminal(terminal);
-}
-
-fn borders(fg: Color) -> Block<'static> {
-    Block::new()
-        .borders(Borders::ALL)
-        .style(Style::new().fg(fg))
 }
 ```
 

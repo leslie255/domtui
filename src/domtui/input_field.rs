@@ -52,26 +52,42 @@ pub(crate) fn len_of_prev_codepoint(s: &str, index: usize) -> Option<usize> {
     Some(4)
 }
 
-/// Move `index` one character forward.
-/// Returns `true` if `index` is moved, `false` if not moved because of range.
-/// Note `index` can be one-past.
-pub(crate) fn index_next(s: &str, index: &mut usize) -> bool {
-    let Some(len) = len_of_codepoint_on(s, *index) else {
-        return false;
+/// Given index in a string, return the next one.
+/// If `index` points to the last character, return a one-past index.
+/// If `index` is one-past, return it unchanged.
+///
+/// # Panics
+/// Panics if `index` is not on character boundary.
+/// Panics if `index` is out of boundary, except when it's one-past.
+pub(crate) fn next_index_in_str(s: &str, index: usize) -> usize {
+    let Some(len) = len_of_codepoint_on(s, index) else {
+        return index;
     };
-    *index += len;
-    true
+    index + len
 }
 
-/// Move `index` one character forward.
-/// Returns `true` if `index` is moved, `false` if not moved because of range.
-/// Note `index` can be one-past.
-pub(crate) fn index_prev(s: &str, index: &mut usize) -> bool {
-    let Some(len) = len_of_prev_codepoint(s, *index) else {
-        return false;
+/// Given index in a string, return the next one.
+/// If `index` points to the last character, return a one-past index.
+/// If `index` is one-past, return it unchanged.
+///
+/// # Panics
+/// Panics if `index` is not on character boundary.
+/// Panics if `index` is out of boundary, except when it's one-past.
+pub(crate) fn prev_index_in_str(s: &str, index: usize) -> usize {
+    let Some(len) = len_of_prev_codepoint(s, index) else {
+        return index;
     };
-    *index -= len;
-    true
+    index - len
+}
+
+fn index_next(s: &str, index: &mut usize) {
+    let next_index = next_index_in_str(s, *index);
+    *index = next_index;
+}
+
+fn index_prev(s: &str, index: &mut usize) {
+    let prev_index = prev_index_in_str(s, *index);
+    *index = prev_index;
 }
 
 #[allow(dead_code)]
@@ -100,10 +116,6 @@ impl InputFieldContent {
             (caret, None) => Cursor::Caret(caret),
             (caret, Some(caret2)) => Cursor::Selection(range(caret, caret2)),
         }
-    }
-
-    pub fn primary_caret(&self) -> usize {
-        self.caret
     }
 
     pub fn cursor_to_beginning(&mut self) {
@@ -196,7 +208,7 @@ impl InputFieldContent {
 
     pub fn caret_left(&mut self) {
         if let Some(caret2) = self.caret2 {
-            self.caret = caret2;
+            self.caret = usize::min(self.caret, caret2);
             self.caret2 = None;
         }
         index_prev(&self.text, &mut self.caret);
@@ -204,7 +216,7 @@ impl InputFieldContent {
 
     pub fn caret_right(&mut self) {
         if let Some(caret2) = self.caret2 {
-            self.caret = caret2;
+            self.caret = usize::max(self.caret, caret2);
             self.caret2 = None;
         }
         index_next(&self.text, &mut self.caret);
@@ -228,15 +240,14 @@ impl InputFieldContent {
     pub fn select_left(&mut self) {
         match &mut self.caret2 {
             Some(caret2) => {
-                index_prev(&self.text, caret2);
+                index_prev(&self.text, &mut self.caret);
                 if self.caret == *caret2 {
                     self.caret2 = None;
                 }
             }
             caret2 @ None => {
-                let mut caret2_ = self.caret;
-                index_prev(&self.text, &mut caret2_);
-                *caret2 = Some(caret2_);
+                *caret2 = Some(self.caret);
+                index_prev(&self.text, &mut self.caret);
             }
         }
     }
@@ -245,15 +256,14 @@ impl InputFieldContent {
     pub fn select_right(&mut self) {
         match &mut self.caret2 {
             Some(caret2) => {
-                index_next(&self.text, caret2);
+                index_next(&self.text, &mut self.caret);
                 if self.caret == *caret2 {
                     self.caret2 = None;
                 }
             }
             caret2 @ None => {
-                let mut caret2_ = self.caret;
-                index_next(&self.text, &mut caret2_);
-                *caret2 = Some(caret2_);
+                *caret2 = Some(self.caret);
+                index_next(&self.text, &mut self.caret);
             }
         }
     }
