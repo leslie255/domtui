@@ -6,7 +6,7 @@
 
 ## Example
 
-<img width="877" alt="Screenshot 2024-09-19 at 10 49 09" src="https://github.com/user-attachments/assets/360ca02c-49e8-4342-aed8-4ec4472729da">
+<img width="873" alt="Screenshot 2024-09-19 at 10 51 05" src="https://github.com/user-attachments/assets/1dd638fb-e4dc-494a-a90f-7fe82f3d9c84">
 
 ```rs
 
@@ -28,6 +28,7 @@ fn main() {
         Paragraph::new("WORLD\n(This view doesn't have a preferred size, it just spreads out equally with other views)")
             .bg(Color::LightCyan)
             .fg(Color::Black)
+            .block(borders(Color::LightRed).title_top("Borders!"))
             .wrap(Wrap::default()),
         Stack::vertical((
             builder.tagged_view_cell(
