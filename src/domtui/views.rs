@@ -165,7 +165,7 @@ impl<'a, V: View + 'a> Screen<'a, V> {
         if let Some(next_focusable) = next_focusable {
             let mut next_focusable = next_focusable.inner.borrow_mut();
             next_focusable.is_focused = true;
-            next_focusable.view.on_unfocus();
+            next_focusable.view.on_focus();
         }
     }
 
@@ -208,7 +208,7 @@ impl<'a, V: View + 'a> Screen<'a, V> {
         if let Some(next_focusable) = next_focusable {
             let mut next_focusable = next_focusable.inner.borrow_mut();
             next_focusable.is_focused = true;
-            next_focusable.view.on_unfocus();
+            next_focusable.view.on_focus();
         }
     }
 
@@ -275,6 +275,10 @@ impl From<(u16, u16)> for Size {
 pub trait View {
     fn render(&self, frame: &mut Frame, area: Rect);
 
+    /// Views like `Stack` will try to satisfy the wanted view size as much as possible.
+    /// Note that there are two functions of the name `preferred_size` in `View` and `MutView`.
+    /// `ViewCell` would delegate calls to `View::preferred_size` to `MutView::preferred_size` of
+    /// the inner mutable view.
     fn preferred_size(&self) -> Option<Size> {
         None
     }
@@ -286,6 +290,10 @@ pub trait View {
 pub trait MutView {
     fn render(&self, frame: &mut Frame, area: Rect, is_focused: bool);
 
+    /// Views like `Stack` will try to satisfy the wanted view size as much as possible.
+    /// Note that there are two functions of the name `preferred_size` in `View` and `MutView`.
+    /// `ViewCell` would delegate calls to `View::preferred_size` to `MutView::preferred_size` of
+    /// the inner mutable view.
     fn preferred_size(&self) -> Option<Size> {
         None
     }
@@ -375,16 +383,33 @@ impl Debug for ViewCellInner<'_> {
 
 /// A weak reference to a `MutView`.
 /// FIXME: Maybe expose this in the future as an API.
-#[derive(Debug, Clone, Default, From)]
-struct ViewCellWeakRef<'a> {
+#[derive(Debug, Clone, From)]
+pub(crate) struct ViewCellWeakRef<'a> {
     weak: Weak<RefCell<ViewCellInner<'a>>>,
 }
 
 impl<'a> ViewCellWeakRef<'a> {
-    /// Like `Weak::upgrade`, it may fail when either the original `Rc` is dropped or the `Weak` is
-    /// null.
-    fn upgrade(&self) -> Option<ViewCell<'a>> {
+    /// Creates a dangling reference.
+    pub(crate) const fn new() -> Self {
+        Self { weak: Weak::new() }
+    }
+
+    /// Like `Weak::upgrade`, it may fail when either the original `Rc` is dropped or if the inner
+    /// weak pointer is dangling (such pointer can be created by `ViewCellWeakRef::default()`).
+    pub(crate) fn upgrade(&self) -> Option<ViewCell<'a>> {
         self.weak.upgrade().map(Into::into)
+    }
+
+    /// If two `ViewCellWeakRef` points to the same view.
+    /// Returns `true` if both are invalid.
+    pub(crate) fn is(&self, other: Self) -> bool {
+        self.weak.ptr_eq(&other.weak)
+    }
+}
+
+impl<'a> Default for ViewCellWeakRef<'a> {
+    fn default() -> Self {
+        Self::new()
     }
 }
 
@@ -536,13 +561,19 @@ impl<Vs: ViewTuple> Stack<Vs> {
 impl<Vs: ViewTuple> View for Stack<Vs> {
     fn render(&self, frame: &mut Frame, area: Rect) {
         let chunks = self.layout.split(area);
-        self.children.render_each(frame, |i, preferred_size| {
+        self.children.for_each_render(frame, |i, preferred_size| {
             let mut area = chunks[i];
             match (self.direction, preferred_size) {
-                (Direction::Horizontal, Some(size)) if size.height != 0 => {
-                    area.height = size.height
+                (Direction::Horizontal, Some(preferrde_size)) => {
+                    if preferrde_size.height != 0 {
+                        area.height = preferrde_size.height.min(area.height);
+                    }
                 }
-                (Direction::Vertical, Some(size)) if size.width != 0 => area.width = size.width,
+                (Direction::Vertical, Some(preferred_size)) => {
+                    if preferred_size.width != 0 {
+                        area.width = preferred_size.width.min(area.width);
+                    }
+                }
                 _ => (),
             };
             area

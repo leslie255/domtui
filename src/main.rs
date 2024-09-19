@@ -32,7 +32,6 @@ fn main() {
                 "input_field0",
                 InputField::default()
                     .placeholder("Type something here...")
-                    .text("")
                     .block_focused(borders(Color::LightYellow))
                     .block_unfocused(borders(Color::DarkGray)),
             ),
@@ -44,7 +43,7 @@ fn main() {
                     .cursor_at_end()
                     .block_focused(borders(Color::LightYellow))
                     .block_unfocused(borders(Color::DarkGray)),
-            ).prefers_size((0, 4)),
+            ).prefers_size((u16::MAX, 4)),
         )),
     ));
 

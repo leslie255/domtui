@@ -6,4 +6,5 @@ edition = "2021"
 [dependencies]
 ratatui = "0.28"
 copypasta = "0.10"
+transient = "0.4"
 derive_more = { version = "1.0", features = ["full"] }
