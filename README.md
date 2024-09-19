@@ -6,7 +6,7 @@
 
 ## Example
 
-<img width="872" alt="screenshot" src="https://github.com/user-attachments/assets/5aacb9a9-f824-4223-8ee7-4eced673bb90">
+<img width="877" alt="Screenshot 2024-09-19 at 10 49 09" src="https://github.com/user-attachments/assets/360ca02c-49e8-4342-aed8-4ec4472729da">
 
 ```rs
 
