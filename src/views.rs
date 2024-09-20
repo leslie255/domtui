@@ -130,81 +130,48 @@ impl<'a, V: View + 'a> Screen<'a, V> {
     /// Switch focus to the next focusable view.
     /// A focusable view is an `View` with its `is_focusable` returning `true`.
     pub fn focus_next(&mut self) {
-        // Unfocus the currnet one.
         // FIXME: optimize this by keeping track the of index of the focused view.
         if self.dynamic_sites.is_empty() {
             return;
         }
+
+        // Unfocus the focused view.
         let (idx, focused_view) = self
             .dynamic_sites
             .iter()
             .enumerate()
-            .find(|(_, weak_iv)| weak_iv.upgrade().unwrap().inner.borrow().is_focused)
-            .map(|(i, weak_iv)| (i, weak_iv.clone()))
+            .find(|(_, weak_mv)| {
+                weak_mv
+                    .upgrade()
+                    .is_some_and(|vc| vc.inner.borrow().is_focused)
+            })
+            .map(|(i, weak_mv)| (i, weak_mv.clone()))
             .unwrap_or_default();
-        if let Some(focused_view) = focused_view.upgrade() {
-            let mut focused_view = focused_view.inner.borrow_mut();
-            focused_view.is_focused = false;
-            focused_view.view.on_unfocus();
-        }
+        let start_idx = match focused_view.upgrade() {
+            Some(focused_view) => {
+                let mut focused_view = focused_view.inner.borrow_mut();
+                focused_view.is_focused = false;
+                focused_view.view.on_unfocus();
+                idx + 1
+            }
+            None => 0,
+        };
 
         // Focus the next focusable.
-        let next_focusable = self.dynamic_sites[(idx + 1)..]
+        let next_focusable = self.dynamic_sites[start_idx..]
             .iter()
-            .chain(self.dynamic_sites[..idx].iter())
-            .find(|&weak_iv| {
-                weak_iv
+            .chain(
+                self.dynamic_sites
+                    .get(..start_idx.wrapping_sub(1))
+                    .unwrap_or(&[])
+                    .iter(),
+            )
+            .find(|&weak_mv| {
+                weak_mv
                     .upgrade()
-                    .unwrap()
-                    .inner
-                    .borrow()
-                    .view
-                    .is_focusable()
+                    .is_some_and(|vc| vc.inner.borrow().view.is_focusable())
             })
-            .map(|weak_iv| weak_iv.upgrade().unwrap());
-        if let Some(next_focusable) = next_focusable {
-            let mut next_focusable = next_focusable.inner.borrow_mut();
-            next_focusable.is_focused = true;
-            next_focusable.view.on_focus();
-        }
-    }
-
-    /// Switch focus to the previous focusable view.
-    /// A focusable view is an `View` with its `is_focusable` returning `true`.
-    pub fn focus_prev(&mut self) {
-        // Unfocus the currnet one.
-        // FIXME: optimize this by keeping track the of index of the focused view.
-        if self.dynamic_sites.is_empty() {
-            return;
-        }
-        let (idx, focused_view) = self
-            .dynamic_sites
-            .iter()
-            .rev()
-            .enumerate()
-            .find(|(_, weak_iv)| weak_iv.upgrade().unwrap().inner.borrow().is_focused)
-            .map(|(i, weak_iv)| (i, weak_iv.clone()))
-            .unwrap_or_default();
-        if let Some(focused_view) = focused_view.upgrade() {
-            let mut focused_view = focused_view.inner.borrow_mut();
-            focused_view.is_focused = false;
-            focused_view.view.on_unfocus();
-        }
-
-        // Focus the next focusable.
-        let next_focusable = self.dynamic_sites[..idx]
-            .iter()
-            .chain(self.dynamic_sites[(idx + 1)..].iter())
-            .find(|&weak_iv| {
-                weak_iv
-                    .upgrade()
-                    .unwrap()
-                    .inner
-                    .borrow()
-                    .view
-                    .is_focusable()
-            })
-            .map(|weak_iv| weak_iv.upgrade().unwrap());
+            .map(|weak_mv| weak_mv.upgrade().unwrap());
         if let Some(next_focusable) = next_focusable {
             let mut next_focusable = next_focusable.inner.borrow_mut();
             next_focusable.is_focused = true;
@@ -215,12 +182,14 @@ impl<'a, V: View + 'a> Screen<'a, V> {
     /// Returns the view currently in focus in the form of a `ViewCell`.
     /// Returns `None` if no view is in focus (including the situation where a view was focused but
     /// was since deleted).
-    pub fn focused<'b>(&'b self) -> Option<ViewCell<'a>> {
-        let iv_weak = self
-            .dynamic_sites
-            .iter()
-            .find(|iv_weak| iv_weak.upgrade().unwrap().inner.borrow().is_focused)?;
-        iv_weak.upgrade()
+    pub fn focused(&self) -> Option<ViewCell<'a>> {
+        for mv in &self.dynamic_sites {
+            let mv = mv.upgrade()?;
+            if mv.inner.borrow().is_focused {
+                return Some(mv);
+            }
+        }
+        None
     }
 
     /// Pass an event into the screen.
@@ -232,7 +201,7 @@ impl<'a, V: View + 'a> Screen<'a, V> {
                 kind: KeyEventKind::Press,
                 state: _,
             }) => {
-                self.focus_prev();
+                // TODO: self.focus_prev();
             }
             Event::Key(KeyEvent {
                 code: KeyCode::Tab,
