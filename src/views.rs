@@ -2,11 +2,10 @@
 
 use std::{
     borrow::Cow,
-    cell::RefCell,
     collections::HashMap,
     fmt::{self, Debug},
     io,
-    rc::{Rc, Weak},
+    sync::{Arc, Mutex, Weak},
 };
 
 use derive_more::From;
@@ -55,7 +54,7 @@ impl<'a> ScreenBuilder<'a> {
     }
 
     /// Wrap a `MutView` into a `ViewCell`, which implements non-mut `View`.
-    pub fn view_cell(&mut self, view: impl MutView + 'a) -> ViewCell<'a> {
+    pub fn view_cell(&mut self, view: impl MutView + Send + 'a) -> ViewCell<'a> {
         let view = ViewCell::new(false, view);
         self.dynamic_sites.push(view.downgrade());
         view
@@ -65,7 +64,7 @@ impl<'a> ScreenBuilder<'a> {
     pub fn tagged_view_cell(
         &mut self,
         tag: impl Into<Cow<'a, str>>,
-        view: impl MutView + 'a,
+        view: impl MutView + Send + 'a,
     ) -> ViewCell<'a> {
         let view = ViewCell::new(false, view);
         self.dynamic_site_tags.insert(tag.into(), view.downgrade());
@@ -97,7 +96,7 @@ impl<'a, V: View + 'a> Screen<'a, V> {
     /// Wrap a `MutView` into a `ViewCell`, which implements non-mut `View`.
     /// This function is for mutating views in a screen after it was built, for creating a
     /// `ViewCell` during building of the screen, use `ScreenBuilder`.
-    pub fn view_cell(&mut self, view: impl MutView + 'a) -> ViewCell<'a> {
+    pub fn view_cell(&mut self, view: impl MutView + Send + 'a) -> ViewCell<'a> {
         let dynamic_site = ViewCell::new(false, view);
         self.dynamic_sites.push(dynamic_site.downgrade());
         dynamic_site
@@ -106,7 +105,7 @@ impl<'a, V: View + 'a> Screen<'a, V> {
     /// Wrap a `MutView` into a `ViewCell`, which implements non-mut `View`, and tag it.
     /// This function is for mutating views in a screen after it was built, for creating a
     /// `ViewCell` during building of the screen, use `ScreenBuilder`.
-    pub fn tagged_view_cell(&mut self, view: impl MutView + 'a) -> ViewCell<'a> {
+    pub fn tagged_view_cell(&mut self, view: impl MutView + Send + 'a) -> ViewCell<'a> {
         let dynamic_site = ViewCell::new(false, view);
         self.dynamic_sites.push(dynamic_site.downgrade());
         dynamic_site
@@ -143,13 +142,13 @@ impl<'a, V: View + 'a> Screen<'a, V> {
             .find(|(_, weak_mv)| {
                 weak_mv
                     .upgrade()
-                    .is_some_and(|vc| vc.inner.borrow().is_focused)
+                    .is_some_and(|vc| vc.inner.lock().unwrap().is_focused)
             })
             .map(|(i, weak_mv)| (i, weak_mv.clone()))
             .unwrap_or_default();
         let start_idx = match focused_view.upgrade() {
             Some(focused_view) => {
-                let mut focused_view = focused_view.inner.borrow_mut();
+                let mut focused_view = focused_view.inner.lock().unwrap();
                 focused_view.is_focused = false;
                 focused_view.view.on_unfocus();
                 idx + 1
@@ -169,11 +168,11 @@ impl<'a, V: View + 'a> Screen<'a, V> {
             .find(|&weak_mv| {
                 weak_mv
                     .upgrade()
-                    .is_some_and(|vc| vc.inner.borrow().view.is_focusable())
+                    .is_some_and(|vc| vc.inner.lock().unwrap().view.is_focusable())
             })
             .map(|weak_mv| weak_mv.upgrade().unwrap());
         if let Some(next_focusable) = next_focusable {
-            let mut next_focusable = next_focusable.inner.borrow_mut();
+            let mut next_focusable = next_focusable.inner.lock().unwrap();
             next_focusable.is_focused = true;
             next_focusable.view.on_focus();
         }
@@ -185,7 +184,7 @@ impl<'a, V: View + 'a> Screen<'a, V> {
     pub fn focused(&self) -> Option<ViewCell<'a>> {
         for mv in &self.dynamic_sites {
             let mv = mv.upgrade()?;
-            if mv.inner.borrow().is_focused {
+            if mv.inner.lock().unwrap().is_focused {
                 return Some(mv);
             }
         }
@@ -213,7 +212,12 @@ impl<'a, V: View + 'a> Screen<'a, V> {
             }
             Event::Key(key_event) => {
                 if let Some(focused_view) = self.focused() {
-                    focused_view.inner.borrow_mut().view.on_key_event(key_event);
+                    focused_view
+                        .inner
+                        .lock()
+                        .unwrap()
+                        .view
+                        .on_key_event(key_event);
                 }
             }
             _ => (),
@@ -283,24 +287,24 @@ pub trait MutView {
 /// Can be created by calling `view_cell` on `Screen` or `ScreenBuilder`.
 #[derive(Debug, Clone, From)]
 pub struct ViewCell<'a> {
-    inner: Rc<RefCell<ViewCellInner<'a>>>,
+    inner: Arc<Mutex<ViewCellInner<'a>>>,
 }
 
 impl<'a> ViewCell<'a> {
     /// Internal function for creating a new `ViewCell`.
-    fn new(is_focused: bool, view: impl MutView + 'a) -> Self {
+    fn new(is_focused: bool, view: impl MutView + Send + 'a) -> Self {
         let inner = ViewCellInner {
             is_focused,
             view: Box::new(view),
         };
         Self {
-            inner: Rc::new(RefCell::new(inner)),
+            inner: Arc::new(Mutex::new(inner)),
         }
     }
 
     /// Downgrade to a weak reference.
     fn downgrade(&self) -> ViewCellWeakRef<'a> {
-        Rc::downgrade(&self.inner).into()
+        Arc::downgrade(&self.inner).into()
     }
 
     /// Downcast the wrapped `MutView` into a value of concrete type.
@@ -319,7 +323,7 @@ impl<'a> ViewCell<'a> {
                 self as *mut V as *mut ()
             }
         }
-        let mut borrow_mut = self.inner.borrow_mut();
+        let mut borrow_mut = self.inner.lock().unwrap();
         let view: &mut MV = unsafe { &mut *(borrow_mut.view.as_mut().raw_ptr() as *mut _) };
         f(view)
     }
@@ -327,19 +331,19 @@ impl<'a> ViewCell<'a> {
 
 impl View for ViewCell<'_> {
     fn render(&self, frame: &mut Frame, area: Rect) {
-        let inner = self.inner.borrow();
+        let inner = self.inner.lock().unwrap();
         inner.view.render(frame, area, inner.is_focused);
     }
 
     fn preferred_size(&self) -> Option<Size> {
-        self.inner.borrow().view.preferred_size()
+        self.inner.lock().unwrap().view.preferred_size()
     }
 }
 
 struct ViewCellInner<'a> {
     is_focused: bool,
     /// FIXME: Remove this `Box` for one less indirection.
-    view: Box<dyn MutView + 'a>,
+    view: Box<dyn MutView + Send + 'a>,
 }
 
 impl Debug for ViewCellInner<'_> {
@@ -354,7 +358,7 @@ impl Debug for ViewCellInner<'_> {
 /// FIXME: Maybe expose this in the future as an API.
 #[derive(Debug, Clone, From)]
 pub(crate) struct ViewCellWeakRef<'a> {
-    weak: Weak<RefCell<ViewCellInner<'a>>>,
+    weak: Weak<Mutex<ViewCellInner<'a>>>,
 }
 
 impl<'a> ViewCellWeakRef<'a> {
@@ -363,7 +367,7 @@ impl<'a> ViewCellWeakRef<'a> {
         Self { weak: Weak::new() }
     }
 
-    /// Like `Weak::upgrade`, it may fail when either the original `Rc` is dropped or if the inner
+    /// Like `Weak::upgrade`, it may fail when either the original `Arc` is dropped or if the inner
     /// weak pointer is dangling (such pointer can be created by `ViewCellWeakRef::default()`).
     pub(crate) fn upgrade(&self) -> Option<ViewCell<'a>> {
         self.weak.upgrade().map(Into::into)
